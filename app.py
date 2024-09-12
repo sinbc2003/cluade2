@@ -1,8 +1,8 @@
 import streamlit as st
 from anthropic import Anthropic
 import os
+from openai import OpenAI
 import google.generativeai as genai
-import openai
 import re
 
 # Streamlit 페이지 설정
@@ -20,7 +20,7 @@ if not (ANTHROPIC_API_KEY and OPENAI_API_KEY and GEMINI_API_KEY):
 # API 클라이언트 설정
 try:
     anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
-    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
     genai.configure(api_key=GEMINI_API_KEY)
 except Exception as e:
     st.error(f"API 클라이언트 초기화 중 오류가 발생했습니다: {str(e)}")
@@ -28,11 +28,11 @@ except Exception as e:
 
 # 모델 선택 드롭다운
 MODEL_OPTIONS = [
-    "gpt-4o",
-    "gpt-4o-mini",
+    "gpt-4",
+    "gpt-3.5-turbo",
     "gemini-pro",
-    "gemini-1.5-flash",
-    "claude-3-5-sonnet-20240620"
+    "gemini-1.5-pro-latest",
+    "claude-3-opus-20240229"
 ]
 selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
 
