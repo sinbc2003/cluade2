@@ -18,10 +18,16 @@ except Exception as e:
     st.error(f"Anthropic 클라이언트 초기화 중 오류가 발생했습니다: {str(e)}")
     st.stop()
 
-# 세션 상태 초기화
+# 세션 상태 초기화 및 기존 메시지 업데이트
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다."}
+    ]
+else:
+    # 기존 메시지의 역할 업데이트
+    st.session_state.messages = [
+        {"role": "user" if msg["role"] == "human" else msg["role"], "content": msg["content"]}
+        for msg in st.session_state.messages
     ]
 
 # 채팅 인터페이스
