@@ -26,10 +26,10 @@ except Exception as e:
     st.error(f"API 클라이언트 초기화 중 오류가 발생했습니다: {str(e)}")
     st.stop()
 
-# 모델 선택 드롭다운
+# 모델 선택 드롭다운 (모델명 수정)
 MODEL_OPTIONS = [
-    "gpt-4",
-    "gpt-3.5-turbo",
+    "gpt-4o",
+    "gpt-4o-mini",
     "gemini-pro",
     "gemini-1.5-pro-latest",
     "claude-3-opus-20240229"
@@ -58,12 +58,14 @@ IMAGE_PATTERNS = [
 def is_image_request(text):
     return any(re.search(pattern, text) for pattern in IMAGE_PATTERNS)
 
-# DALL-E를 사용한 이미지 생성 함수
+# DALL-E를 사용한 이미지 생성 함수 (수정됨)
 def generate_image(prompt):
     try:
+        # 프롬프트 수정 - 안전한 내용으로 제한
+        safe_prompt = f"Create a safe and appropriate image of {prompt}. The image should be family-friendly and avoid any controversial or sensitive content."
         response = openai_client.images.generate(
             model="dall-e-3",
-            prompt=prompt,
+            prompt=safe_prompt,
             size="1024x1024",
             quality="standard",
             n=1,
@@ -102,7 +104,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
                     full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
                     st.session_state.messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
                 else:
-                    full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. DALL-E API 키와 사용 권한을 확인해 주세요."
+                    full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
         else:
             try:
                 if "gpt" in selected_model:
