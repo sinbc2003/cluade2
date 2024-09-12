@@ -39,7 +39,6 @@ def show_login_page():
         if login(username, password):
             st.session_state.logged_in = True
             st.success("로그인 성공!")
-            st.experimental_rerun()
         else:
             st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
@@ -121,7 +120,7 @@ def main_app():
     # 로그아웃 버튼
     if st.sidebar.button("로그아웃"):
         st.session_state.logged_in = False
-        st.experimental_rerun()
+        st.rerun()
 
     # 메시지 표시
     for message in st.session_state.messages:
