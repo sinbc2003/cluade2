@@ -24,13 +24,6 @@ SYSTEM_MESSAGE = "당신은 도움이 되는 AI 어시스턴트입니다."
 # 세션 상태 초기화 및 기존 메시지 업데이트
 if "messages" not in st.session_state:
     st.session_state.messages = []
-else:
-    # 기존 메시지에서 시스템 메시지 제거 및 역할 업데이트
-    st.session_state.messages = [
-        {"role": "user" if msg["role"] in ["human", "user"] else msg["role"], "content": msg["content"]}
-        for msg in st.session_state.messages
-        if msg["role"] != "system"
-    ]
 
 # 채팅 인터페이스
 st.title("Claude Chatbot")
@@ -52,20 +45,24 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
 
         try:
             # Claude API를 사용하여 응답 생성
-            stream = client.messages.create(
-                model="claude-3-sonnet-20240229",
+            stream = client.messages.stream(
                 max_tokens=1000,
-                system=SYSTEM_MESSAGE,
                 messages=st.session_state.messages,
-                stream=True,
+                model="claude-3-sonnet-20240229",
+                system=SYSTEM_MESSAGE,
             )
 
             for chunk in stream:
-                if chunk.delta.text:
+                if chunk.type == "content_block_start":
+                    continue
+                elif chunk.type == "content_block_delta":
                     full_response += chunk.delta.text
                     message_placeholder.markdown(full_response + "▌")
-            
-            message_placeholder.markdown(full_response)
+                elif chunk.type == "content_block_stop":
+                    message_placeholder.markdown(full_response)
+                elif chunk.type == "message_stop":
+                    break
+
         except Exception as e:
             st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
         
