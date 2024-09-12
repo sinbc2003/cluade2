@@ -26,7 +26,7 @@ except Exception as e:
     st.error(f"API 클라이언트 초기화 중 오류가 발생했습니다: {str(e)}")
     st.stop()
 
-# 모델 선택 드롭다운 (모델명 수정)
+# 모델 선택 드롭다운
 MODEL_OPTIONS = [
     "gpt-4o",
     "gpt-4o-mini",
@@ -43,26 +43,29 @@ SYSTEM_MESSAGE = "당신은 도움이 되는 AI 어시스턴트입니다."
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 이미지 생성 관련 키워드와 패턴
+# 이미지 생성 관련 키워드와 패턴 (확장됨)
 IMAGE_PATTERNS = [
-    r'이미지.*[생성만들어]',
-    r'사진.*[찍어줘만들어]',
-    r'그림.*[그려줘만들어]',
-    r'[생성만들어].*이미지',
-    r'[그려줘만들어].*그림',
-    r'[시각화시각적].*표현',
-    r'비주얼.*[만들어생성]'
+    r'(이미지|그림|사진|웹툰).*?(그려|만들어|생성|출력)',
+    r'(그려|만들어|생성|출력).*?(이미지|그림|사진|웹툰)',
+    r'(시각화|시각적).*?(표현|묘사)',
+    r'비주얼.*?(만들어|생성)',
+    r'(그려|만들어|생성|출력)[줘라]',
+    r'(이미지|그림|사진|웹툰).*?(보여)',
 ]
 
-# 이미지 생성 요청 확인 함수
+# 이미지 생성 요청 확인 함수 (개선됨)
 def is_image_request(text):
-    return any(re.search(pattern, text) for pattern in IMAGE_PATTERNS)
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in IMAGE_PATTERNS)
 
 # DALL-E를 사용한 이미지 생성 함수 (수정됨)
 def generate_image(prompt):
     try:
-        # 프롬프트 수정 - 안전한 내용으로 제한
-        safe_prompt = f"Create a safe and appropriate image of {prompt}. The image should be family-friendly and avoid any controversial or sensitive content."
+        # 프롬프트에서 이미지 생성 명령어 제거
+        clean_prompt = re.sub(r'(이미지|그림|사진|웹툰).*?(그려|만들어|생성|출력|보여)[줘라]?', '', prompt).strip()
+        
+        # 안전한 프롬프트 구성
+        safe_prompt = f"Create a safe and appropriate image based on this description: {clean_prompt}. The image should be family-friendly and avoid any controversial or sensitive content."
+        
         response = openai_client.images.generate(
             model="dall-e-3",
             prompt=safe_prompt,
