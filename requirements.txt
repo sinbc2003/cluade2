@@ -1,4 +1,6 @@
 streamlit
-anthropic>=0.18.0
+anthropic
 openai
 google-generativeai
+requests
+pymongo
