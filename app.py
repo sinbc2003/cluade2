@@ -43,12 +43,20 @@ SYSTEM_MESSAGE = "당신은 도움이 되는 AI 어시스턴트입니다."
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 이미지 생성 관련 키워드
-IMAGE_KEYWORDS = ["이미지", "사진", "그림", "그려"]
+# 이미지 생성 관련 키워드와 패턴
+IMAGE_PATTERNS = [
+    r'이미지.*[생성만들어]',
+    r'사진.*[찍어줘만들어]',
+    r'그림.*[그려줘만들어]',
+    r'[생성만들어].*이미지',
+    r'[그려줘만들어].*그림',
+    r'[시각화시각적].*표현',
+    r'비주얼.*[만들어생성]'
+]
 
 # 이미지 생성 요청 확인 함수
 def is_image_request(text):
-    return any(keyword in text for keyword in IMAGE_KEYWORDS)
+    return any(re.search(pattern, text) for pattern in IMAGE_PATTERNS)
 
 # DALL-E를 사용한 이미지 생성 함수
 def generate_image(prompt):
@@ -93,7 +101,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
                 full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
                 st.session_state.messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
             else:
-                full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다."
+                full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. DALL-E API 키와 사용 권한을 확인해 주세요."
         else:
             try:
                 if "gpt" in selected_model:
@@ -128,7 +136,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
             except Exception as e:
                 st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
         
-        if full_response and not is_image_request(prompt):
+        if full_response:
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 # 디버그 정보 표시
