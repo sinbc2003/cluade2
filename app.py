@@ -4,10 +4,47 @@ import os
 from openai import OpenAI
 import google.generativeai as genai
 import re
+import requests
 
 # Streamlit 페이지 설정
 st.set_page_config(page_title="Multi-Model Chatbot", page_icon=":robot_face:", layout="wide")
 
+# Google Apps Script 웹 앱 URL 업데이트
+GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwy0OivCMJ9dR9P9aiAFTILf__DXzDtvkq0MEq7ofUzF4MflXY2A1D5wrhdIcauFtUa/exec"
+
+# 로그인 함수
+def login(username, password):
+    params = {
+        "action": "login",
+        "username": username,
+        "password": password
+    }
+    try:
+        response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params)
+        return response.text.strip().lower() == "true"
+    except requests.RequestException as e:
+        st.error(f"로그인 요청 중 오류가 발생했습니다: {e}")
+        return False
+
+# 세션 상태 초기화
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
+# 로그인 페이지
+if not st.session_state.logged_in:
+    st.title("로그인")
+    username = st.text_input("아이디")
+    password = st.text_input("비밀번호", type="password")
+    if st.button("로그인"):
+        if login(username, password):
+            st.session_state.logged_in = True
+            st.success("로그인 성공!")
+            st.experimental_rerun()
+        else:
+            st.error("아이디 또는 비밀번호가 잘못되었습니다.")
+    st.stop()
+
+# 여기서부터 기존 채팅봇 코드
 # API 키 가져오기
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -80,6 +117,11 @@ def generate_image(prompt):
 
 # 채팅 인터페이스
 st.title("Multi-Model Chatbot")
+
+# 로그아웃 버튼
+if st.sidebar.button("로그아웃"):
+    st.session_state.logged_in = False
+    st.experimental_rerun()
 
 # 메시지 표시
 for message in st.session_state.messages:
