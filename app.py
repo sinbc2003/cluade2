@@ -18,23 +18,25 @@ except Exception as e:
     st.error(f"Anthropic 클라이언트 초기화 중 오류가 발생했습니다: {str(e)}")
     st.stop()
 
+# 시스템 메시지 설정
+SYSTEM_MESSAGE = "당신은 도움이 되는 AI 어시스턴트입니다."
+
 # 세션 상태 초기화 및 기존 메시지 업데이트
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다."}
-    ]
+    st.session_state.messages = []
 else:
-    # 기존 메시지의 역할 업데이트
+    # 기존 메시지에서 시스템 메시지 제거 및 역할 업데이트
     st.session_state.messages = [
-        {"role": "user" if msg["role"] == "human" else msg["role"], "content": msg["content"]}
+        {"role": "user" if msg["role"] in ["human", "user"] else msg["role"], "content": msg["content"]}
         for msg in st.session_state.messages
+        if msg["role"] != "system"
     ]
 
 # 채팅 인터페이스
 st.title("Claude Chatbot")
 
 # 메시지 표시
-for message in st.session_state.messages[1:]:  # 시스템 메시지 제외
+for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
@@ -53,6 +55,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
             stream = client.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=1000,
+                system=SYSTEM_MESSAGE,
                 messages=st.session_state.messages,
                 stream=True,
             )
@@ -72,3 +75,4 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
 # 디버그 정보 표시
 st.sidebar.title("디버그 정보")
 st.sidebar.json(st.session_state.messages)
+st.sidebar.text(f"System Message: {SYSTEM_MESSAGE}")
