@@ -1,2 +1,4 @@
 streamlit
 anthropic>=0.18.0
+openai
+google-generativeai
