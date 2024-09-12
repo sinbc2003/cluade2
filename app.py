@@ -45,23 +45,17 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
 
         try:
             # Claude API를 사용하여 응답 생성
-            stream = client.messages.stream(
+            with client.messages.stream(
                 max_tokens=1000,
                 messages=st.session_state.messages,
                 model="claude-3-sonnet-20240229",
                 system=SYSTEM_MESSAGE,
-            )
-
-            for chunk in stream:
-                if chunk.type == "content_block_start":
-                    continue
-                elif chunk.type == "content_block_delta":
-                    full_response += chunk.delta.text
+            ) as stream:
+                for text in stream.text_stream:
+                    full_response += text
                     message_placeholder.markdown(full_response + "▌")
-                elif chunk.type == "content_block_stop":
-                    message_placeholder.markdown(full_response)
-                elif chunk.type == "message_stop":
-                    break
+
+            message_placeholder.markdown(full_response)
 
         except Exception as e:
             st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
