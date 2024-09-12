@@ -1,2 +1,2 @@
 streamlit
-anthropic
+anthropic>=0.18.0
