@@ -6,7 +6,7 @@ import google.generativeai as genai
 import re
 
 # Streamlit 페이지 설정
-st.set_page_config(page_title="Multi-Model Chatbot", page_icon=":robot_face:")
+st.set_page_config(page_title="Multi-Model Chatbot", page_icon=":robot_face:", layout="wide")
 
 # API 키 가져오기
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -95,13 +95,14 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         
         if is_image_request(prompt):
             message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
-            image_url = generate_image(prompt)
-            if image_url:
-                st.image(image_url, caption="생성된 이미지")
-                full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
-                st.session_state.messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
-            else:
-                full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. DALL-E API 키와 사용 권한을 확인해 주세요."
+            with st.spinner("이미지 생성 중..."):
+                image_url = generate_image(prompt)
+                if image_url:
+                    st.image(image_url, caption="생성된 이미지")
+                    full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
+                    st.session_state.messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
+                else:
+                    full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. DALL-E API 키와 사용 권한을 확인해 주세요."
         else:
             try:
                 if "gpt" in selected_model:
