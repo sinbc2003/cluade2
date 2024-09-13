@@ -304,27 +304,33 @@ def show_chatbot_page():
                     
                     message_placeholder.markdown(full_response)
                 except Exception as e:
-                    st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
+                    st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
             
             if full_response:
                 chatbot['messages'].append({"role": "assistant", "content": full_response})
                 
         # 데이터베이스 업데이트
-        if db:
-            db.users.update_one(
-                {"_id": st.session_state.user["_id"]},
-                {"$set": {f"chatbots.{st.session_state.current_chatbot}": chatbot}}
-            )
+        if db is not None:  # 여기를 수정했습니다
+            try:
+                db.users.update_one(
+                    {"_id": st.session_state.user["_id"]},
+                    {"$set": {f"chatbots.{st.session_state.current_chatbot}": chatbot}}
+                )
+            except Exception as e:
+                st.error(f"대화 내용 저장 중 오류가 발생했습니다: {str(e)}")
         else:
             st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
     if st.button("대화 내역 초기화"):
         chatbot['messages'] = []
-        if db:
-            db.users.update_one(
-                {"_id": st.session_state.user["_id"]},
-                {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": []}}
-            )
+        if db is not None:  # 여기도 수정했습니다
+            try:
+                db.users.update_one(
+                    {"_id": st.session_state.user["_id"]},
+                    {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": []}}
+                )
+            except Exception as e:
+                st.error(f"대화 내역 초기화 중 오류가 발생했습니다: {str(e)}")
         st.rerun()
 
 # 메인 애플리케이션
