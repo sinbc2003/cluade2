@@ -30,13 +30,17 @@ def login(username, password):
         response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
         st.write(f"Debug - Full response: {response.text}")  # 전체 응답 내용 출력
         if response.text.strip().lower() == "true":
-            user = db.users.find_one({"username": username})
-            if user:
+            try:
+                user = db.users.find_one({"username": username})
+                if not user:
+                    new_user = {"username": username, "chatbots": []}
+                    result = db.users.insert_one(new_user)
+                    user = db.users.find_one({"_id": result.inserted_id})
+                st.write(f"Debug - User data: {user}")  # 사용자 데이터 출력
                 return user
-            else:
-                new_user = {"username": username, "chatbots": []}
-                result = db.users.insert_one(new_user)
-                return db.users.find_one({"_id": result.inserted_id})
+            except Exception as e:
+                st.error(f"MongoDB 작업 중 오류 발생: {e}")
+                return {"username": username, "chatbots": []}  # 임시 사용자 데이터 반환
         return None
     except requests.RequestException as e:
         st.error(f"로그인 요청 중 오류가 발생했습니다: {e}")
@@ -123,6 +127,7 @@ def show_login_page():
                 st.session_state.user = user
                 st.session_state.current_page = 'home'
                 st.success("로그인 성공!")
+                st.write(f"Debug - Session state after login: {st.session_state}")  # 세션 상태 출력
                 st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 잘못되었습니다.")
