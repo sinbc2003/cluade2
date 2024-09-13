@@ -54,9 +54,6 @@ MODEL_OPTIONS = [
     "claude-3-opus-20240229"
 ]
 
-# 시스템 메시지 설정
-SYSTEM_MESSAGE = "당신은 도움이 되는 AI 어시스턴트입니다."
-
 # 이미지 생성 관련 키워드와 패턴
 IMAGE_PATTERNS = [
     r'(이미지|그림|사진|웹툰).*?(그려|만들어|생성|출력)',
@@ -167,7 +164,7 @@ def show_home_page():
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
-                            messages=[{"role": "system", "content": SYSTEM_MESSAGE}] + st.session_state.home_messages,
+                            messages=[{"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다."}] + st.session_state.home_messages,
                             stream=True
                         )
                         for chunk in response:
@@ -186,7 +183,7 @@ def show_home_page():
                             max_tokens=1000,
                             messages=st.session_state.home_messages,
                             model=selected_model,
-                            system=SYSTEM_MESSAGE,
+                            system="당신은 도움이 되는 AI 어시스턴트입니다.",
                         ) as stream:
                             for text in stream.text_stream:
                                 full_response += text
@@ -207,14 +204,19 @@ def show_home_page():
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
     chatbot_name = st.text_input("챗봇 이름")
-    chatbot_description = st.text_area("챗봇 설명")
+    chatbot_description = st.text_area("챗봇 소개")
+    system_prompt = st.text_area("시스템 프롬프트", value="당신은 도움이 되는 AI 어시스턴트입니다.")
+    welcome_message = st.text_input("웰컴 메시지", value="안녕하세요! 무엇을 도와드릴까요?")
+    
     if st.button("챗봇 생성"):
         new_chatbot = {
             "name": chatbot_name,
             "description": chatbot_description,
-            "messages": []
+            "system_prompt": system_prompt,
+            "welcome_message": welcome_message,
+            "messages": [{"role": "assistant", "content": welcome_message}]
         }
-        if db is not None:  # 여기를 수정했습니다
+        if db is not None:
             try:
                 db.users.update_one(
                     {"_id": st.session_state.user["_id"]},
@@ -277,7 +279,7 @@ def show_chatbot_page():
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
-                            messages=[{"role": "system", "content": SYSTEM_MESSAGE}] + chatbot['messages'],
+                            messages=[{"role": "system", "content": chatbot['system_prompt']}] + chatbot['messages'],
                             stream=True
                         )
                         for chunk in response:
@@ -286,7 +288,7 @@ def show_chatbot_page():
                                 message_placeholder.markdown(full_response + "▌")
                     elif "gemini" in selected_model:
                         model = genai.GenerativeModel(selected_model)
-                        response = model.generate_content(prompt, stream=True)
+                        response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
                         for chunk in response:
                             if chunk.text:
                                 full_response += chunk.text
@@ -296,7 +298,7 @@ def show_chatbot_page():
                             max_tokens=1000,
                             messages=chatbot['messages'],
                             model=selected_model,
-                            system=SYSTEM_MESSAGE,
+                            system=chatbot['system_prompt'],
                         ) as stream:
                             for text in stream.text_stream:
                                 full_response += text
@@ -310,7 +312,7 @@ def show_chatbot_page():
                 chatbot['messages'].append({"role": "assistant", "content": full_response})
                 
         # 데이터베이스 업데이트
-        if db is not None:  # 여기를 수정했습니다
+        if db is not None:
             try:
                 db.users.update_one(
                     {"_id": st.session_state.user["_id"]},
@@ -322,16 +324,32 @@ def show_chatbot_page():
             st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
     if st.button("대화 내역 초기화"):
-        chatbot['messages'] = []
-        if db is not None:  # 여기도 수정했습니다
+        chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
+        if db is not None:
             try:
                 db.users.update_one(
                     {"_id": st.session_state.user["_id"]},
-                    {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": []}}
+                    {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": chatbot['messages']}}
                 )
             except Exception as e:
                 st.error(f"대화 내역 초기화 중 오류가 발생했습니다: {str(e)}")
         st.rerun()
+
+# 대화 내역 확인 페이지
+def show_chat_history_page():
+    st.title("대화 내역 확인")
+    
+    if 'user' in st.session_state and st.session_state.user:
+        for i, chatbot in enumerate(st.session_state.user['chatbots']):
+            st.subheader(f"{i+1}. {chatbot['name']}")
+            st.write(chatbot['description'])
+            if st.button(f"대화 내역 보기 #{i}"):
+                st.write("--- 대화 내역 ---")
+                for message in chatbot['messages']:
+                    st.write(f"{message['role']}: {message['content']}")
+                st.write("---")
+    else:
+        st.warning("로그인이 필요합니다.")
 
 # 메인 애플리케이션
 def main_app():
@@ -345,6 +363,9 @@ def main_app():
         st.rerun()
     if st.sidebar.button("사용 가능한 챗봇"):
         st.session_state.current_page = 'available_chatbots'
+        st.rerun()
+    if st.sidebar.button("대화 내역 확인"):
+        st.session_state.current_page = 'chat_history'
         st.rerun()
     if st.sidebar.button("로그아웃"):
         st.session_state.user = None
@@ -360,6 +381,8 @@ def main_app():
         show_available_chatbots_page()
     elif st.session_state.current_page == 'chatbot':
         show_chatbot_page()
+    elif st.session_state.current_page == 'chat_history':
+        show_chat_history_page()
 
 # 메인 실행 부분
 if 'user' not in st.session_state or not st.session_state.user:
