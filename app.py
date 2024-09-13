@@ -15,11 +15,43 @@ db = None
 # Streamlit 페이지 설정
 st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
 
+# CSS 스타일 추가
+st.markdown("""
+<style>
+    .stButton>button {
+        background-color: #f0f8ff;
+        color: #4682b4;
+        border: 1px solid #4682b4;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-size: 16px;
+        transition: all 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: #4682b4;
+        color: #f0f8ff;
+    }
+    .chatbot-card {
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+    }
+    .chatbot-card img {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # MongoDB 연결
 try:
     MONGO_URI = st.secrets["MONGO_URI"]
     client = MongoClient(MONGO_URI)
-    db = client.get_database("chatbot_platform")  # 또는 실제 사용하려는 DB 이름
+    db = client.get_database("chatbot_platform")
 except Exception as e:
     st.error("데이터베이스 연결에 실패했습니다. 관리자에게 문의해주세요.")
     db = None
@@ -204,63 +236,87 @@ def show_home_page():
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
     chatbot_name = st.text_input("챗봇 이름")
-    chatbot_description = st.text_area("챗봇 소개")
-    system_prompt = st.text_area("시스템 프롬프트", value="당신은 도움이 되는 AI 어시스턴트입니다.")
+    chatbot_description = st.text_input("챗봇 소개")
+    system_prompt = st.text_area("시스템 프롬프트", value="당신은 도움이 되는 AI 어시스턴트입니다.", height=300)
     welcome_message = st.text_input("웰컴 메시지", value="안녕하세요! 무엇을 도와드릴까요?")
     is_shared = st.checkbox("다른 교사와 공유하기")
     
-    if st.button("챗봇 생성"):
-        new_chatbot = {
-            "name": chatbot_name,
-            "description": chatbot_description,
-            "system_prompt": system_prompt,
-            "welcome_message": welcome_message,
-            "messages": [{"role": "assistant", "content": welcome_message}],
-            "creator": st.session_state.user["username"],
-            "is_shared": is_shared
-        }
-        if db is not None:
-            try:
-                if is_shared:
-                    db.shared_chatbots.insert_one(new_chatbot)
-                else:
-                    db.users.update_one(
-                        {"_id": st.session_state.user["_id"]},
-                        {"$push": {"chatbots": new_chatbot}}
-                    )
-                st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
-                st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
-            except Exception as e:
-                st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
-        else:
-            if 'chatbots' not in st.session_state.user:
-                st.session_state.user['chatbots'] = []
-            st.session_state.user['chatbots'].append(new_chatbot)
-            st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다! (오프라인 모드)")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("챗봇 생성"):
+            new_chatbot = {
+                "name": chatbot_name,
+                "description": chatbot_description,
+                "system_prompt": system_prompt,
+                "welcome_message": welcome_message,
+                "messages": [{"role": "assistant", "content": welcome_message}],
+                "creator": st.session_state.user["username"],
+                "is_shared": is_shared
+            }
+            if db is not None:
+                try:
+                    if is_shared:
+                        db.shared_chatbots.insert_one(new_chatbot)
+                    else:
+                        db.users.update_one(
+                            {"_id": st.session_state.user["_id"]},
+                            {"$push": {"chatbots": new_chatbot}}
+                        )
+                    st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
+                    st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
+                except Exception as e:
+                    st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
+            else:
+                if 'chatbots' not in st.session_state.user:
+                    st.session_state.user['chatbots'] = []
+                st.session_state.user['chatbots'].append(new_chatbot)
+                st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다! (오프라인 모드)")
+    
+    with col2:
+        if st.button("프로필 이미지 생성"):
+            profile_image_prompt = f"Create a profile image for a chatbot named '{chatbot_name}'. Description: {chatbot_description}"
+            profile_image_url = generate_image(profile_image_prompt)
+            if profile_image_url:
+                st.image(profile_image_url, caption="생성된 프로필 이미지", width=200)
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
     st.title("사용 가능한 챗봇")
+    cols = st.columns(3)
     for i, chatbot in enumerate(st.session_state.user["chatbots"]):
-        st.write(f"{i+1}. {chatbot['name']}")
-        st.write(chatbot['description'])
-        if st.button(f"사용하기 #{i}"):
-            st.session_state.current_chatbot = i
-            st.session_state.current_page = 'chatbot'
-            st.rerun()
+        with cols[i % 3]:
+            st.markdown(f"""
+            <div class="chatbot-card">
+                <h3>{chatbot['name']}</h3>
+                <p>{chatbot['description']}</p>
+                <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" alt="프로필 이미지">
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button(f"사용하기 #{i}"):
+                st.session_state.current_chatbot = i
+                st.session_state.current_page = 'chatbot'
+                st.rerun()
 
 # 공유 챗봇 페이지
 def show_shared_chatbots_page():
     st.title("수원외국어고등학교 공유 챗봇")
     if db is not None:
         shared_chatbots = list(db.shared_chatbots.find())
+        cols = st.columns(3)
         for i, chatbot in enumerate(shared_chatbots):
-            st.write(f"{i+1}. {chatbot['name']} (작성자: {chatbot['creator']})")
-            st.write(chatbot['description'])
-            if st.button(f"사용하기 #{i}"):
-                st.session_state.current_shared_chatbot = chatbot
-                st.session_state.current_page = 'shared_chatbot'
-                st.rerun()
+            with cols[i % 3]:
+                st.markdown(f"""
+                <div class="chatbot-card">
+                    <h3>{chatbot['name']}</h3>
+                    <p>{chatbot['description']}</p>
+                    <p>작성자: {chatbot['creator']}</p>
+                    <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" alt="프로필 이미지">
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"사용하기 #{i}"):
+                    st.session_state.current_shared_chatbot = chatbot
+                    st.session_state.current_page = 'shared_chatbot'
+                    st.rerun()
     else:
         st.write("데이터베이스 연결이 없어 공유 챗봇을 불러올 수 없습니다.")
 
@@ -354,81 +410,6 @@ def show_chatbot_page():
                 )
             except Exception as e:
                 st.error(f"대화 내역 초기화 중 오류가 발생했습니다: {str(e)}")
-        st.rerun()
-
-# 공유 챗봇 사용 페이지
-def show_shared_chatbot_page():
-    chatbot = st.session_state.current_shared_chatbot
-    st.title(f"{chatbot['name']} 챗봇 (공유)")
-    selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
-    
-    if 'messages' not in chatbot:
-        chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
-    
-    for message in chatbot['messages']:
-        with st.chat_message(message["role"]):
-            if message["role"] == "assistant" and "image_url" in message:
-                st.image(message["image_url"], caption="생성된 이미지")
-            st.markdown(message["content"])
-
-    if prompt := st.chat_input("무엇을 도와드릴까요?"):
-        chatbot['messages'].append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            
-            if is_image_request(prompt):
-                message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
-                with st.spinner("이미지 생성 중..."):
-                    image_url = generate_image(prompt)
-                    if image_url:
-                        st.image(image_url, caption="생성된 이미지")
-                        full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
-                        chatbot['messages'].append({"role": "assistant", "content": full_response, "image_url": image_url})
-                    else:
-                        full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
-            else:
-                try:
-                    if "gpt" in selected_model:
-                        response = openai_client.chat.completions.create(
-                            model=selected_model,
-                            messages=[{"role": "system", "content": chatbot['system_prompt']}] + chatbot['messages'],
-                            stream=True
-                        )
-                        for chunk in response:
-                            if chunk.choices[0].delta.content is not None:
-                                full_response += chunk.choices[0].delta.content
-                                message_placeholder.markdown(full_response + "▌")
-                    elif "gemini" in selected_model:
-                        model = genai.GenerativeModel(selected_model)
-                        response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
-                        for chunk in response:
-                            if chunk.text:
-                                full_response += chunk.text
-                                message_placeholder.markdown(full_response + "▌")
-                    elif "claude" in selected_model:
-                        with anthropic_client.messages.stream(
-                            max_tokens=1000,
-                            messages=chatbot['messages'],
-                            model=selected_model,
-                            system=chatbot['system_prompt'],
-                        ) as stream:
-                            for text in stream.text_stream:
-                                full_response += text
-                                message_placeholder.markdown(full_response + "▌")
-                    
-                    message_placeholder.markdown(full_response)
-                except Exception as e:
-                    st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
-            
-            if full_response:
-                chatbot['messages'].append({"role": "assistant", "content": full_response})
-
-    if st.button("대화 내역 초기화"):
-        chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
         st.rerun()
 
 # 대화 내역 확인 페이지
