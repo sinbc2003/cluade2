@@ -9,6 +9,10 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 import urllib.parse
 
+# 전역 변수로 db 선언
+db = None
+
+
 # Streamlit 페이지 설정
 st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
 
@@ -32,6 +36,7 @@ except Exception as e:
     st.error(f"MongoDB 연결 오류: {e}")
     st.write(f"Debug - 상세 오류 정보: {str(e)}")
     db = None
+
 
 # Google Apps Script 웹 앱 URL
 GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
@@ -108,7 +113,7 @@ def login(username, password):
         response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
         st.write(f"Debug - Full response: {response.text}")  # 전체 응답 내용 출력
         if response.text.strip().lower() == "true":
-            if db:
+            if db is not None:
                 user = db.users.find_one({"username": username})
                 if not user:
                     new_user = {"username": username, "chatbots": []}
