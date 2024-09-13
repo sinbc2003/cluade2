@@ -7,6 +7,7 @@ import re
 import requests
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+import urllib.parse
 
 # Streamlit 페이지 설정
 st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
@@ -14,12 +15,22 @@ st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layo
 # MongoDB 연결
 try:
     MONGO_URI = st.secrets["MONGO_URI"]
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-    client.server_info()  # 연결 테스트
-    db = client.chatbot_platform  # 데이터베이스 이름
+    # URI에서 사용자 이름과 비밀번호 부분을 가립니다.
+    safe_uri = MONGO_URI.split('://')
+    safe_uri[1] = safe_uri[1].split('@')[1]
+    safe_uri = '://'.join(safe_uri)
+    st.write(f"Debug - MONGO_URI (safe): {safe_uri}")
+
+    client = MongoClient(MONGO_URI)
+    db = client.get_database("chatbot_platform")  # 또는 실제 사용하려는 DB 이름
+    # 연결 테스트
+    db.command("ping")
     st.success("MongoDB에 성공적으로 연결되었습니다.")
+    st.write(f"Debug - 사용 가능한 데이터베이스: {client.list_database_names()}")
+    st.write(f"Debug - 현재 데이터베이스의 컬렉션: {db.list_collection_names()}")
 except Exception as e:
     st.error(f"MongoDB 연결 오류: {e}")
+    st.write(f"Debug - 상세 오류 정보: {str(e)}")
     db = None
 
 # Google Apps Script 웹 앱 URL
