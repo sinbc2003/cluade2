@@ -20,11 +20,8 @@ try:
     MONGO_URI = st.secrets["MONGO_URI"]
     client = MongoClient(MONGO_URI)
     db = client.get_database("chatbot_platform")  # 또는 실제 사용하려는 DB 이름
-    # 연결 테스트
-    db.command("ping")
-    st.success("MongoDB에 성공적으로 연결되었습니다.")
 except Exception as e:
-    st.error("MongoDB 연결에 실패했습니다. 관리자에게 문의해주세요.")
+    st.error("데이터베이스 연결에 실패했습니다. 관리자에게 문의해주세요.")
     db = None
 
 # Google Apps Script 웹 앱 URL
