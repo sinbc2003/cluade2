@@ -214,17 +214,21 @@ def show_create_chatbot_page():
             "description": chatbot_description,
             "messages": []
         }
-        if db:
-            db.users.update_one(
-                {"_id": st.session_state.user["_id"]},
-                {"$push": {"chatbots": new_chatbot}}
-            )
-            st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
+        if db is not None:  # 여기를 수정했습니다
+            try:
+                db.users.update_one(
+                    {"_id": st.session_state.user["_id"]},
+                    {"$push": {"chatbots": new_chatbot}}
+                )
+                st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
+                st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
+            except Exception as e:
+                st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
         else:
             if 'chatbots' not in st.session_state.user:
                 st.session_state.user['chatbots'] = []
             st.session_state.user['chatbots'].append(new_chatbot)
-        st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
+            st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다! (오프라인 모드)")
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
