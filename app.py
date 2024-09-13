@@ -12,31 +12,20 @@ import urllib.parse
 # 전역 변수로 db 선언
 db = None
 
-
 # Streamlit 페이지 설정
 st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
 
 # MongoDB 연결
 try:
     MONGO_URI = st.secrets["MONGO_URI"]
-    # URI에서 사용자 이름과 비밀번호 부분을 가립니다.
-    safe_uri = MONGO_URI.split('://')
-    safe_uri[1] = safe_uri[1].split('@')[1]
-    safe_uri = '://'.join(safe_uri)
-    st.write(f"Debug - MONGO_URI (safe): {safe_uri}")
-
     client = MongoClient(MONGO_URI)
     db = client.get_database("chatbot_platform")  # 또는 실제 사용하려는 DB 이름
     # 연결 테스트
     db.command("ping")
     st.success("MongoDB에 성공적으로 연결되었습니다.")
-    st.write(f"Debug - 사용 가능한 데이터베이스: {client.list_database_names()}")
-    st.write(f"Debug - 현재 데이터베이스의 컬렉션: {db.list_collection_names()}")
 except Exception as e:
-    st.error(f"MongoDB 연결 오류: {e}")
-    st.write(f"Debug - 상세 오류 정보: {str(e)}")
+    st.error("MongoDB 연결에 실패했습니다. 관리자에게 문의해주세요.")
     db = None
-
 
 # Google Apps Script 웹 앱 URL
 GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
@@ -56,7 +45,7 @@ try:
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
     genai.configure(api_key=GEMINI_API_KEY)
 except Exception as e:
-    st.error(f"API 클라이언트 초기화 중 오류가 발생했습니다: {str(e)}")
+    st.error("API 클라이언트 초기화에 실패했습니다. 관리자에게 문의해주세요.")
     st.stop()
 
 # 모델 선택 드롭다운
@@ -99,7 +88,7 @@ def generate_image(prompt):
         )
         return response.data[0].url
     except Exception as e:
-        st.error(f"이미지 생성 중 오류가 발생했습니다: {str(e)}")
+        st.error("이미지 생성에 실패했습니다. 다시 시도해주세요.")
         return None
 
 # 로그인 함수
@@ -111,7 +100,6 @@ def login(username, password):
     }
     try:
         response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
-        st.write(f"Debug - Full response: {response.text}")  # 전체 응답 내용 출력
         if response.text.strip().lower() == "true":
             if db is not None:
                 user = db.users.find_one({"username": username})
@@ -119,14 +107,13 @@ def login(username, password):
                     new_user = {"username": username, "chatbots": []}
                     result = db.users.insert_one(new_user)
                     user = db.users.find_one({"_id": result.inserted_id})
-                st.write(f"Debug - User data: {user}")  # 사용자 데이터 출력
                 return user
             else:
-                st.warning("MongoDB 연결이 없습니다. 임시 사용자 데이터를 사용합니다.")
+                st.warning("데이터베이스 연결이 없습니다. 임시 사용자 데이터를 사용합니다.")
                 return {"username": username, "chatbots": []}
         return None
     except requests.RequestException as e:
-        st.error(f"로그인 요청 중 오류가 발생했습니다: {e}")
+        st.error("로그인 요청 중 오류가 발생했습니다. 다시 시도해주세요.")
         return None
 
 # 로그인 페이지
@@ -210,7 +197,7 @@ def show_home_page():
                     
                     message_placeholder.markdown(full_response)
                 except Exception as e:
-                    st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
+                    st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
             
             if full_response:
                 st.session_state.home_messages.append({"role": "assistant", "content": full_response})
@@ -316,7 +303,7 @@ def show_chatbot_page():
                     
                     message_placeholder.markdown(full_response)
                 except Exception as e:
-                    st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
+                    st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
             
             if full_response:
                 chatbot['messages'].append({"role": "assistant", "content": full_response})
