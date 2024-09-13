@@ -7,68 +7,36 @@ import re
 import requests
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-
-# Streamlit 페이지 설정
-st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
-
-# 사이드바 크기 조절을 위한 CSS
-st.markdown("""
-<style>
-    [data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
-        width: 350px;
-    }
-    [data-testid="stSidebar"][aria-expanded="false"] > div:first-child {
-        width: 350px;
-        margin-left: -350px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# 버튼 스타일 CSS
-button_style = """
-<style>
-    .stButton > button {
-        width: 100%;
-        height: 60px;
-        font-size: 20px;
-        font-weight: bold;
-        margin: 10px 0px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        transition: all 0.3s ease;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
-    }
-</style>
-"""
-st.markdown(button_style, unsafe_allow_html=True)
+import urllib.parse
 
 # 전역 변수로 db 선언
 db = None
 
-# MongoDB 연결
-@st.cache_resource
-def init_connection():
-    global db
-    try:
-        MONGO_URI = st.secrets["MONGO_URI"]
-        client = MongoClient(MONGO_URI)
-        db = client.get_database("chatbot_platform")
-        # 연결 테스트
-        db.command("ping")
-        return True
-    except Exception as e:
-        st.error(f"MongoDB 연결 오류: {e}")
-        return False
 
-# 앱 시작 시 한 번만 연결 시도
-if init_connection():
+# Streamlit 페이지 설정
+st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
+
+# MongoDB 연결
+try:
+    MONGO_URI = st.secrets["MONGO_URI"]
+    # URI에서 사용자 이름과 비밀번호 부분을 가립니다.
+    safe_uri = MONGO_URI.split('://')
+    safe_uri[1] = safe_uri[1].split('@')[1]
+    safe_uri = '://'.join(safe_uri)
+    st.write(f"Debug - MONGO_URI (safe): {safe_uri}")
+
+    client = MongoClient(MONGO_URI)
+    db = client.get_database("chatbot_platform")  # 또는 실제 사용하려는 DB 이름
+    # 연결 테스트
+    db.command("ping")
     st.success("MongoDB에 성공적으로 연결되었습니다.")
-else:
-    st.error("MongoDB 연결에 실패했습니다. 관리자에게 문의하세요.")
-    st.stop()
+    st.write(f"Debug - 사용 가능한 데이터베이스: {client.list_database_names()}")
+    st.write(f"Debug - 현재 데이터베이스의 컬렉션: {db.list_collection_names()}")
+except Exception as e:
+    st.error(f"MongoDB 연결 오류: {e}")
+    st.write(f"Debug - 상세 오류 정보: {str(e)}")
+    db = None
+
 
 # Google Apps Script 웹 앱 URL
 GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
@@ -99,6 +67,9 @@ MODEL_OPTIONS = [
     "gemini-1.5-pro-latest",
     "claude-3-opus-20240229"
 ]
+
+# 시스템 메시지 설정
+SYSTEM_MESSAGE = "당신은 도움이 되는 AI 어시스턴트입니다."
 
 # 이미지 생성 관련 키워드와 패턴
 IMAGE_PATTERNS = [
@@ -140,13 +111,19 @@ def login(username, password):
     }
     try:
         response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
+        st.write(f"Debug - Full response: {response.text}")  # 전체 응답 내용 출력
         if response.text.strip().lower() == "true":
-            user = db.users.find_one({"username": username})
-            if not user:
-                new_user = {"username": username, "chatbots": []}
-                result = db.users.insert_one(new_user)
-                user = db.users.find_one({"_id": result.inserted_id})
-            return user
+            if db is not None:
+                user = db.users.find_one({"username": username})
+                if not user:
+                    new_user = {"username": username, "chatbots": []}
+                    result = db.users.insert_one(new_user)
+                    user = db.users.find_one({"_id": result.inserted_id})
+                st.write(f"Debug - User data: {user}")  # 사용자 데이터 출력
+                return user
+            else:
+                st.warning("MongoDB 연결이 없습니다. 임시 사용자 데이터를 사용합니다.")
+                return {"username": username, "chatbots": []}
         return None
     except requests.RequestException as e:
         st.error(f"로그인 요청 중 오류가 발생했습니다: {e}")
@@ -206,7 +183,7 @@ def show_home_page():
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
-                            messages=[{"role": "system", "content": "You are a helpful assistant."}] + st.session_state.home_messages,
+                            messages=[{"role": "system", "content": SYSTEM_MESSAGE}] + st.session_state.home_messages,
                             stream=True
                         )
                         for chunk in response:
@@ -224,7 +201,8 @@ def show_home_page():
                         with anthropic_client.messages.stream(
                             max_tokens=1000,
                             messages=st.session_state.home_messages,
-                            model=selected_model
+                            model=selected_model,
+                            system=SYSTEM_MESSAGE,
                         ) as stream:
                             for text in stream.text_stream:
                                 full_response += text
@@ -245,65 +223,42 @@ def show_home_page():
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
     chatbot_name = st.text_input("챗봇 이름")
-    chatbot_description = st.text_area("챗봇 소개")
-    system_prompt = st.text_area("시스템 프롬프트", value="당신은 도움이 되는 AI 어시스턴트입니다.")
-    welcome_message = st.text_input("웰컴 메시지", value="안녕하세요! 무엇을 도와드릴까요?")
-    
-    if st.button("프로필 이미지 생성"):
-        with st.spinner("이미지 생성 중..."):
-            image_prompt = f"Create a profile image for a chatbot named '{chatbot_name}'. Description: {chatbot_description}"
-            image_url = generate_image(image_prompt)
-            if image_url:
-                st.image(image_url, caption="생성된 프로필 이미지")
-                st.session_state.temp_profile_image = image_url
-            else:
-                st.error("프로필 이미지 생성에 실패했습니다.")
-
+    chatbot_description = st.text_area("챗봇 설명")
     if st.button("챗봇 생성"):
-        if 'temp_profile_image' not in st.session_state:
-            st.warning("프로필 이미지를 먼저 생성해주세요.")
-        else:
-            new_chatbot = {
-                "name": chatbot_name,
-                "description": chatbot_description,
-                "system_prompt": system_prompt,
-                "welcome_message": welcome_message,
-                "profile_image": st.session_state.temp_profile_image,
-                "messages": []
-            }
+        new_chatbot = {
+            "name": chatbot_name,
+            "description": chatbot_description,
+            "messages": []
+        }
+        if db:
             db.users.update_one(
                 {"_id": st.session_state.user["_id"]},
                 {"$push": {"chatbots": new_chatbot}}
             )
             st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
-            st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
-            del st.session_state.temp_profile_image
-            st.rerun()
+        else:
+            if 'chatbots' not in st.session_state.user:
+                st.session_state.user['chatbots'] = []
+            st.session_state.user['chatbots'].append(new_chatbot)
+        st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
     st.title("사용 가능한 챗봇")
-    cols = st.columns(3)
     for i, chatbot in enumerate(st.session_state.user["chatbots"]):
-        with cols[i % 3]:
-            st.image(chatbot['profile_image'], width=200)
-            st.subheader(chatbot['name'])
-            st.write(chatbot['description'])
-            if st.button(f"사용하기 #{i}"):
-                st.session_state.current_chatbot = i
-                st.session_state.current_page = 'chatbot'
-                st.rerun()
+        st.write(f"{i+1}. {chatbot['name']}")
+        st.write(chatbot['description'])
+        if st.button(f"사용하기 #{i}"):
+            st.session_state.current_chatbot = i
+            st.session_state.current_page = 'chatbot'
+            st.rerun()
 
 # 특정 챗봇 페이지
 def show_chatbot_page():
     chatbot = st.session_state.user["chatbots"][st.session_state.current_chatbot]
     st.title(f"{chatbot['name']} 챗봇")
-    st.image(chatbot['profile_image'], width=100)
-    st.write(chatbot['description'])
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
     
-    if 'messages' not in chatbot:
-        chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
     for message in chatbot['messages']:
         with st.chat_message(message["role"]):
             if message["role"] == "assistant" and "image_url" in message:
@@ -334,7 +289,7 @@ def show_chatbot_page():
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
-                            messages=[{"role": "system", "content": chatbot['system_prompt']}] + chatbot['messages'],
+                            messages=[{"role": "system", "content": SYSTEM_MESSAGE}] + chatbot['messages'],
                             stream=True
                         )
                         for chunk in response:
@@ -353,7 +308,7 @@ def show_chatbot_page():
                             max_tokens=1000,
                             messages=chatbot['messages'],
                             model=selected_model,
-                            system=chatbot['system_prompt'],
+                            system=SYSTEM_MESSAGE,
                         ) as stream:
                             for text in stream.text_stream:
                                 full_response += text
@@ -367,17 +322,21 @@ def show_chatbot_page():
                 chatbot['messages'].append({"role": "assistant", "content": full_response})
                 
         # 데이터베이스 업데이트
-        db.users.update_one(
-            {"_id": st.session_state.user["_id"]},
-            {"$set": {f"chatbots.{st.session_state.current_chatbot}": chatbot}}
-        )
+        if db:
+            db.users.update_one(
+                {"_id": st.session_state.user["_id"]},
+                {"$set": {f"chatbots.{st.session_state.current_chatbot}": chatbot}}
+            )
+        else:
+            st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
     if st.button("대화 내역 초기화"):
-        chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
-        db.users.update_one(
-            {"_id": st.session_state.user["_id"]},
-            {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": chatbot['messages']}}
-        )
+        chatbot['messages'] = []
+        if db:
+            db.users.update_one(
+                {"_id": st.session_state.user["_id"]},
+                {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": []}}
+            )
         st.rerun()
 
 # 메인 애플리케이션
@@ -387,11 +346,11 @@ def main_app():
     if st.sidebar.button("홈"):
         st.session_state.current_page = 'home'
         st.rerun()
-    if st.sidebar.button("사용 가능한 챗봇"):
-        st.session_state.current_page = 'available_chatbots'
-        st.rerun()
     if st.sidebar.button("새 챗봇 만들기"):
         st.session_state.current_page = 'create_chatbot'
+        st.rerun()
+    if st.sidebar.button("사용 가능한 챗봇"):
+        st.session_state.current_page = 'available_chatbots'
         st.rerun()
     if st.sidebar.button("로그아웃"):
         st.session_state.user = None
