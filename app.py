@@ -304,7 +304,7 @@ def show_chatbot_page():
     
     if 'messages' not in chatbot:
         chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
-        for message in chatbot['messages']:
+    for message in chatbot['messages']:
         with st.chat_message(message["role"]):
             if message["role"] == "assistant" and "image_url" in message:
                 st.image(message["image_url"], caption="생성된 이미지")
