@@ -12,52 +12,23 @@ from bson.objectid import ObjectId
 st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
 
 # MongoDB 연결
-MONGO_URI = os.getenv("MONGO_URI")
-client = MongoClient(MONGO_URI)
-db = client.chatbot_platform
+try:
+    MONGO_URI = st.secrets["MONGO_URI"]
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    client.server_info()  # 연결 테스트
+    db = client.chatbot_platform  # 데이터베이스 이름
+    st.success("MongoDB에 성공적으로 연결되었습니다.")
+except Exception as e:
+    st.error(f"MongoDB 연결 오류: {e}")
+    db = None
 
 # Google Apps Script 웹 앱 URL
 GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
 
-# 로그인 함수
-def login(username, password):
-    params = {
-        "action": "login",
-        "username": username,
-        "password": password
-    }
-    try:
-        response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
-        st.write(f"Debug - Full response: {response.text}")  # 전체 응답 내용 출력
-        if response.text.strip().lower() == "true":
-            try:
-                user = db.users.find_one({"username": username})
-                if not user:
-                    new_user = {"username": username, "chatbots": []}
-                    result = db.users.insert_one(new_user)
-                    user = db.users.find_one({"_id": result.inserted_id})
-                st.write(f"Debug - User data: {user}")  # 사용자 데이터 출력
-                return user
-            except Exception as e:
-                st.error(f"MongoDB 작업 중 오류 발생: {e}")
-                return {"username": username, "chatbots": []}  # 임시 사용자 데이터 반환
-        return None
-    except requests.RequestException as e:
-        st.error(f"로그인 요청 중 오류가 발생했습니다: {e}")
-        return None
-
-# 세션 상태 초기화
-if 'user' not in st.session_state:
-    st.session_state.user = None
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = 'home'
-if 'current_chatbot' not in st.session_state:
-    st.session_state.current_chatbot = None
-
 # API 키 가져오기
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 if not (ANTHROPIC_API_KEY and OPENAI_API_KEY and GEMINI_API_KEY):
     st.error("하나 이상의 API 키가 설정되지 않았습니다. Streamlit Cloud의 환경 변수를 확인해주세요.")
@@ -115,6 +86,33 @@ def generate_image(prompt):
         st.error(f"이미지 생성 중 오류가 발생했습니다: {str(e)}")
         return None
 
+# 로그인 함수
+def login(username, password):
+    params = {
+        "action": "login",
+        "username": username,
+        "password": password
+    }
+    try:
+        response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
+        st.write(f"Debug - Full response: {response.text}")  # 전체 응답 내용 출력
+        if response.text.strip().lower() == "true":
+            if db:
+                user = db.users.find_one({"username": username})
+                if not user:
+                    new_user = {"username": username, "chatbots": []}
+                    result = db.users.insert_one(new_user)
+                    user = db.users.find_one({"_id": result.inserted_id})
+                st.write(f"Debug - User data: {user}")  # 사용자 데이터 출력
+                return user
+            else:
+                st.warning("MongoDB 연결이 없습니다. 임시 사용자 데이터를 사용합니다.")
+                return {"username": username, "chatbots": []}
+        return None
+    except requests.RequestException as e:
+        st.error(f"로그인 요청 중 오류가 발생했습니다: {e}")
+        return None
+
 # 로그인 페이지
 def show_login_page():
     st.title("로그인")
@@ -127,7 +125,6 @@ def show_login_page():
                 st.session_state.user = user
                 st.session_state.current_page = 'home'
                 st.success("로그인 성공!")
-                st.write(f"Debug - Session state after login: {st.session_state}")  # 세션 상태 출력
                 st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 잘못되었습니다.")
@@ -217,12 +214,17 @@ def show_create_chatbot_page():
             "description": chatbot_description,
             "messages": []
         }
-        db.users.update_one(
-            {"_id": st.session_state.user["_id"]},
-            {"$push": {"chatbots": new_chatbot}}
-        )
+        if db:
+            db.users.update_one(
+                {"_id": st.session_state.user["_id"]},
+                {"$push": {"chatbots": new_chatbot}}
+            )
+            st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
+        else:
+            if 'chatbots' not in st.session_state.user:
+                st.session_state.user['chatbots'] = []
+            st.session_state.user['chatbots'].append(new_chatbot)
         st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
-        st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
@@ -304,17 +306,21 @@ def show_chatbot_page():
                 chatbot['messages'].append({"role": "assistant", "content": full_response})
                 
         # 데이터베이스 업데이트
-        db.users.update_one(
-            {"_id": st.session_state.user["_id"]},
-            {"$set": {f"chatbots.{st.session_state.current_chatbot}": chatbot}}
-        )
+        if db:
+            db.users.update_one(
+                {"_id": st.session_state.user["_id"]},
+                {"$set": {f"chatbots.{st.session_state.current_chatbot}": chatbot}}
+            )
+        else:
+            st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
     if st.button("대화 내역 초기화"):
         chatbot['messages'] = []
-        db.users.update_one(
-            {"_id": st.session_state.user["_id"]},
-            {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": []}}
-        )
+        if db:
+            db.users.update_one(
+                {"_id": st.session_state.user["_id"]},
+                {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": []}}
+            )
         st.rerun()
 
 # 메인 애플리케이션
@@ -346,7 +352,7 @@ def main_app():
         show_chatbot_page()
 
 # 메인 실행 부분
-if not st.session_state.user:
+if 'user' not in st.session_state or not st.session_state.user:
     show_login_page()
 else:
     main_app()
