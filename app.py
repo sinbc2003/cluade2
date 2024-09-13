@@ -1,7 +1,7 @@
 import streamlit as st
 from anthropic import Anthropic
 import os
-import openai
+from openai import OpenAI
 import google.generativeai as genai
 import re
 import requests
@@ -62,22 +62,34 @@ st.markdown("""
         font-size: 0.8em;
         padding: 0.2em 0.5em;
     }
+    .chat-input-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .chat-input-container .stButton {
+        margin-left: 10px;
+    }
+    .chat-window {
+        max-height: 400px;
+        overflow-y: auto;
+        padding-right: 10px;
+    }
+    /* 채팅창이 하단에 고정되도록 스타일 추가 */
     .chat-container {
         display: flex;
         flex-direction: column;
         height: 500px;
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        padding: 10px;
-        overflow: hidden;
     }
     .chat-messages {
         flex: 1;
         overflow-y: auto;
-        padding-right: 10px;
     }
     .chat-input {
-        margin-top: 10px;
+        position: sticky;
+        bottom: 0;
+        background: white;
+        padding-top: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -106,7 +118,7 @@ if not (ANTHROPIC_API_KEY and OPENAI_API_KEY and GEMINI_API_KEY):
 # API 클라이언트 설정
 try:
     anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
-    openai.api_key = OPENAI_API_KEY
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
     genai.configure(api_key=GEMINI_API_KEY)
 except Exception as e:
     st.error("API 클라이언트 초기화에 실패했습니다. 관리자에게 문의해주세요.")
@@ -114,11 +126,11 @@ except Exception as e:
 
 # 모델 선택 드롭다운
 MODEL_OPTIONS = [
-    "gpt-4",
-    "gpt-3.5-turbo",
+    "gpt-4o",
+    "gpt-4o-mini",
     "gemini-pro",
     "gemini-1.5-pro-latest",
-    "claude-2"
+    "claude-3-opus-20240229"
 ]
 
 # 이미지 생성 관련 키워드와 패턴
@@ -140,12 +152,14 @@ def generate_image(prompt):
     try:
         clean_prompt = re.sub(r'(이미지|그림|사진|웹툰).*?(그려|만들어|생성|출력|보여)[줘라]?', '', prompt).strip()
         safe_prompt = f"Create a safe and appropriate image based on this description: {clean_prompt}. The image should be family-friendly and avoid any controversial or sensitive content."
-        response = openai.Image.create(
+        response = openai_client.images.generate(
+            model="dall-e-3",
             prompt=safe_prompt,
+            size="1024x1024",
+            quality="standard",
             n=1,
-            size="1024x1024"
         )
-        return response['data'][0]['url']
+        return response.data[0].url
     except Exception as e:
         st.error("이미지 생성에 실패했습니다. 다시 시도해주세요.")
         return None
@@ -199,64 +213,80 @@ def show_home_page():
     if 'home_messages' not in st.session_state:
         st.session_state.home_messages = []
 
-    chat_container = st.container()
-    with chat_container:
-        for message in st.session_state.home_messages:
-            with st.chat_message(message["role"]):
-                if message["role"] == "assistant" and "image_url" in message:
-                    st.image(message["image_url"], caption="생성된 이미지")
-                st.markdown(message["content"])
+    for message in st.session_state.home_messages:
+        with st.chat_message(message["role"]):
+            if message["role"] == "assistant" and "image_url" in message:
+                st.image(message["image_url"], caption="생성된 이미지")
+            st.markdown(message["content"])
 
-        # 채팅 입력창 고정
+    col1, col2 = st.columns([5, 1])
+    with col1:
         prompt = st.chat_input("무엇을 도와드릴까요?")
-        if prompt:
-            st.session_state.home_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+    with col2:
+        if st.button("초기화", key="reset_home", help="대화 내역을 초기화합니다.", use_container_width=True):
+            st.session_state.home_messages = []
+            st.rerun()
 
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                full_response = ""
+    if prompt:
+        st.session_state.home_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-                if is_image_request(prompt):
-                    message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
-                    with st.spinner("이미지 생성 중..."):
-                        image_url = generate_image(prompt)
-                        if image_url:
-                            st.image(image_url, caption="생성된 이미지")
-                            full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
-                            st.session_state.home_messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
-                        else:
-                            full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
-                else:
-                    try:
-                        if "gpt" in selected_model:
-                            response = openai.ChatCompletion.create(
-                                model=selected_model,
-                                messages=[{"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다."}] + st.session_state.home_messages,
-                                stream=True
-                            )
-                            for chunk in response:
-                                if 'content' in chunk['choices'][0]['delta']:
-                                    full_response += chunk['choices'][0]['delta']['content']
-                                    message_placeholder.markdown(full_response + "▌")
-                            message_placeholder.markdown(full_response)
-                        # 다른 모델 처리 추가 가능
-                    except Exception as e:
-                        st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
 
-                    if full_response:
-                        st.session_state.home_messages.append({"role": "assistant", "content": full_response})
+            if is_image_request(prompt):
+                message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
+                with st.spinner("이미지 생성 중..."):
+                    image_url = generate_image(prompt)
+                    if image_url:
+                        st.image(image_url, caption="생성된 이미지")
+                        full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
+                        st.session_state.home_messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
+                    else:
+                        full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
+            else:
+                try:
+                    if "gpt" in selected_model:
+                        response = openai_client.chat.completions.create(
+                            model=selected_model,
+                            messages=[{"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다."}] + st.session_state.home_messages,
+                            stream=True
+                        )
+                        for chunk in response:
+                            if chunk.choices[0].delta.content is not None:
+                                full_response += chunk.choices[0].delta.content
+                                message_placeholder.markdown(full_response + "▌")
+                    elif "gemini" in selected_model:
+                        model = genai.GenerativeModel(selected_model)
+                        response = model.generate_content(prompt, stream=True)
+                        for chunk in response:
+                            if chunk.text:
+                                full_response += chunk.text
+                                message_placeholder.markdown(full_response + "▌")
+                    elif "claude" in selected_model:
+                        with anthropic_client.messages.stream(
+                            max_tokens=1000,
+                            messages=st.session_state.home_messages,
+                            model=selected_model,
+                            system="당신은 도움이 되는 AI 어시스턴트입니다.",
+                        ) as stream:
+                            for text in stream.text_stream:
+                                full_response += text
+                                message_placeholder.markdown(full_response + "▌")
 
-    # 초기화 버튼
-    if st.button("초기화", key="reset_home", help="대화 내역을 초기화합니다.", use_container_width=True):
-        st.session_state.home_messages = []
-        st.rerun()
+                    message_placeholder.markdown(full_response)
+                except Exception as e:
+                    st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
+
+                if full_response:
+                    st.session_state.home_messages.append({"role": "assistant", "content": full_response})
 
 # 새 챗봇 만들기 페이지
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
-    col_left, col_right = st.columns([1, 1])
+    col_left, col_right = st.columns(2)
 
     with col_left:
         chatbot_name = st.text_input("챗봇 이름")
@@ -307,24 +337,37 @@ def show_create_chatbot_page():
                 st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다! (오프라인 모드)")
 
     with col_right:
-        st.subheader("챗봇 테스트")
+        st.header("챗봇 테스트")
         if 'test_chatbot_messages' not in st.session_state:
             st.session_state.test_chatbot_messages = [{"role": "assistant", "content": welcome_message}]
         else:
             st.session_state.test_chatbot_messages[0] = {"role": "assistant", "content": welcome_message}
 
+        # 채팅창 컨테이너
         chat_container = st.container()
         with chat_container:
-            chat_messages = st.container()
-            with chat_messages:
+            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+            chat_messages = st.empty()
+            with chat_messages.container():
                 for message in st.session_state.test_chatbot_messages:
                     with st.chat_message(message["role"]):
                         st.markdown(message["content"])
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            # 채팅 입력창 고정
-            test_prompt = st.chat_input("메시지를 입력하세요", key="test_chatbot_prompt")
-            if test_prompt:
-                st.session_state.test_chatbot_messages.append({"role": "user", "content": test_prompt})
+        # 채팅 입력창 고정
+        st.markdown('<div class="chat-input">', unsafe_allow_html=True)
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            test_prompt = st.text_input("메시지를 입력하세요", key="test_chatbot_prompt")
+        with col2:
+            if st.button("초기화", key="reset_test_chatbot", help="대화 내역을 초기화합니다.", use_container_width=True):
+                st.session_state.test_chatbot_messages = [{"role": "assistant", "content": welcome_message}]
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if test_prompt:
+            st.session_state.test_chatbot_messages.append({"role": "user", "content": test_prompt})
+            with chat_messages.container():
                 with st.chat_message("user"):
                     st.markdown(test_prompt)
 
@@ -332,14 +375,14 @@ def show_create_chatbot_page():
                     message_placeholder = st.empty()
                     full_response = ""
                     try:
-                        response = openai.ChatCompletion.create(
+                        response = openai_client.chat.completions.create(
                             model="gpt-4",
                             messages=[{"role": "system", "content": system_prompt}] + st.session_state.test_chatbot_messages,
                             stream=True
                         )
                         for chunk in response:
-                            if 'content' in chunk['choices'][0]['delta']:
-                                full_response += chunk['choices'][0]['delta']['content']
+                            if chunk.choices[0].delta.content is not None:
+                                full_response += chunk.choices[0].delta.content
                                 message_placeholder.markdown(full_response + "▌")
                         message_placeholder.markdown(full_response)
                     except Exception as e:
@@ -348,17 +391,12 @@ def show_create_chatbot_page():
                     if full_response:
                         st.session_state.test_chatbot_messages.append({"role": "assistant", "content": full_response})
 
-        # 초기화 버튼
-        if st.button("초기화", key="reset_test_chatbot", help="대화 내역을 초기화합니다."):
-            st.session_state.test_chatbot_messages = [{"role": "assistant", "content": welcome_message}]
-            st.rerun()
-
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
     st.title("사용 가능한 챗봇")
-    cols = st.columns(2)
+    cols = st.columns(2)  # 2열로 변경
     for i, chatbot in enumerate(st.session_state.user["chatbots"]):
-        with cols[i % 2]:
+        with cols[i % 2]:  # 2열로 변경
             st.markdown(f"""
             <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#F0F8FF')};">
                 <div style="display: flex;">
@@ -374,13 +412,13 @@ def show_available_chatbots_page():
             """, unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
-                if st.button(f"사용하기 #{i}", key=f"use_chatbot_{i}"):
+                if st.button(f"사용하기 #{i}"):
                     st.session_state.current_chatbot = i
                     st.session_state.current_page = 'chatbot'
                     st.rerun()
             with col2:
                 if chatbot.get('creator') == st.session_state.user["username"]:
-                    if st.button(f"지침 수정 #{i}", key=f"edit_chatbot_{i}"):
+                    if st.button(f"지침 수정 #{i}"):
                         st.session_state.edit_chatbot = i
                         st.session_state.current_page = 'edit_chatbot'
                         st.rerun()
@@ -390,9 +428,9 @@ def show_shared_chatbots_page():
     st.title("수원외국어고등학교 공유 챗봇")
     if db is not None:
         shared_chatbots = list(db.shared_chatbots.find())
-        cols = st.columns(2)
+        cols = st.columns(2)  # 2열로 변경
         for i, chatbot in enumerate(shared_chatbots):
-            with cols[i % 2]:
+            with cols[i % 2]:  # 2열로 변경
                 st.markdown(f"""
                 <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#F0F8FF')};">
                     <div style="display: flex;">
@@ -409,13 +447,13 @@ def show_shared_chatbots_page():
                 """, unsafe_allow_html=True)
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button(f"사용하기 #{i}", key=f"use_shared_chatbot_{i}"):
+                    if st.button(f"사용하기 #{i}"):
                         st.session_state.current_shared_chatbot = chatbot
                         st.session_state.current_page = 'shared_chatbot'
                         st.rerun()
                 with col2:
                     if chatbot.get('creator') == st.session_state.user["username"]:
-                        if st.button(f"지침 수정 #{i}", key=f"edit_shared_chatbot_{i}"):
+                        if st.button(f"지침 수정 #{i}"):
                             st.session_state.edit_shared_chatbot = chatbot
                             st.session_state.current_page = 'edit_shared_chatbot'
                             st.rerun()
@@ -428,82 +466,95 @@ def show_chatbot_page():
     st.title(f"{chatbot['name']} 챗봇")
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
 
-    if 'chatbot_messages' not in st.session_state:
-        st.session_state.chatbot_messages = chatbot['messages']
+    for message in chatbot['messages']:
+        with st.chat_message(message["role"]):
+            if message["role"] == "assistant" and "image_url" in message:
+                st.image(message["image_url"], caption="생성된 이미지")
+            st.markdown(message["content"])
 
-    chat_container = st.container()
-    with chat_container:
-        for message in st.session_state.chatbot_messages:
-            with st.chat_message(message["role"]):
-                if message["role"] == "assistant" and "image_url" in message:
-                    st.image(message["image_url"], caption="생성된 이미지")
-                st.markdown(message["content"])
-
-        # 채팅 입력창 고정
+    col1, col2 = st.columns([5, 1])
+    with col1:
         prompt = st.chat_input("무엇을 도와드릴까요?")
-        if prompt:
-            st.session_state.chatbot_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                full_response = ""
-
-                if is_image_request(prompt):
-                    message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
-                    with st.spinner("이미지 생성 중..."):
-                        image_url = generate_image(prompt)
-                        if image_url:
-                            st.image(image_url, caption="생성된 이미지")
-                            full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
-                            st.session_state.chatbot_messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
-                        else:
-                            full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
-                else:
-                    try:
-                        if "gpt" in selected_model:
-                            response = openai.ChatCompletion.create(
-                                model=selected_model,
-                                messages=[{"role": "system", "content": chatbot['system_prompt']}] + st.session_state.chatbot_messages,
-                                stream=True
-                            )
-                            for chunk in response:
-                                if 'content' in chunk['choices'][0]['delta']:
-                                    full_response += chunk['choices'][0]['delta']['content']
-                                    message_placeholder.markdown(full_response + "▌")
-                            message_placeholder.markdown(full_response)
-                        # 다른 모델 처리 추가 가능
-                    except Exception as e:
-                        st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
-
-                    if full_response:
-                        st.session_state.chatbot_messages.append({"role": "assistant", "content": full_response})
-
-            # 데이터베이스 업데이트
+    with col2:
+        if st.button("초기화", key="reset_chatbot", help="대화 내역을 초기화합니다.", use_container_width=True):
+            chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
             if db is not None:
                 try:
                     db.users.update_one(
                         {"_id": st.session_state.user["_id"]},
-                        {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": st.session_state.chatbot_messages}}
+                        {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": chatbot['messages']}}
                     )
                 except Exception as e:
-                    st.error(f"대화 내용 저장 중 오류가 발생했습니다: {str(e)}")
-            else:
-                st.session_state.user["chatbots"][st.session_state.current_chatbot]['messages'] = st.session_state.chatbot_messages
+                    st.error(f"대화 내역 초기화 중 오류가 발생했습니다: {str(e)}")
+            st.rerun()
 
-    # 초기화 버튼
-    if st.button("초기화", key="reset_chatbot", help="대화 내역을 초기화합니다."):
-        st.session_state.chatbot_messages = [{"role": "assistant", "content": chatbot['welcome_message']}]
+    if prompt:
+        chatbot['messages'].append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+
+            if is_image_request(prompt):
+                message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
+                with st.spinner("이미지 생성 중..."):
+                    image_url = generate_image(prompt)
+                    if image_url:
+                        st.image(image_url, caption="생성된 이미지")
+                        full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
+                        chatbot['messages'].append({"role": "assistant", "content": full_response, "image_url": image_url})
+                    else:
+                        full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
+            else:
+                try:
+                    if "gpt" in selected_model:
+                        response = openai_client.chat.completions.create(
+                            model=selected_model,
+                            messages=[{"role": "system", "content": chatbot['system_prompt']}] + chatbot['messages'],
+                            stream=True
+                        )
+                        for chunk in response:
+                            if chunk.choices[0].delta.content is not None:
+                                full_response += chunk.choices[0].delta.content
+                                message_placeholder.markdown(full_response + "▌")
+                    elif "gemini" in selected_model:
+                        model = genai.GenerativeModel(selected_model)
+                        response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
+                        for chunk in response:
+                            if chunk.text:
+                                full_response += chunk.text
+                                message_placeholder.markdown(full_response + "▌")
+                    elif "claude" in selected_model:
+                        with anthropic_client.messages.stream(
+                            max_tokens=1000,
+                            messages=chatbot['messages'],
+                            model=selected_model,
+                            system=chatbot['system_prompt'],
+                        ) as stream:
+                            for text in stream.text_stream:
+                                full_response += text
+                                message_placeholder.markdown(full_response + "▌")
+
+                    message_placeholder.markdown(full_response)
+                except Exception as e:
+                    st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
+
+                if full_response:
+                    chatbot['messages'].append({"role": "assistant", "content": full_response})
+
+        # 데이터베이스 업데이트
         if db is not None:
             try:
                 db.users.update_one(
                     {"_id": st.session_state.user["_id"]},
-                    {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": st.session_state.chatbot_messages}}
+                    {"$set": {f"chatbots.{st.session_state.current_chatbot}": chatbot}}
                 )
             except Exception as e:
-                st.error(f"대화 내역 초기화 중 오류가 발생했습니다: {str(e)}")
-        st.rerun()
+                st.error(f"대화 내용 저장 중 오류가 발생했습니다: {str(e)}")
+        else:
+            st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
 # 챗봇 지침 수정 페이지
 def show_edit_chatbot_page():
@@ -540,6 +591,54 @@ def show_edit_chatbot_page():
             st.session_state.current_page = 'available_chatbots'
             st.rerun()
 
+# 공유 챗봇 지침 수정 페이지
+def show_edit_shared_chatbot_page():
+    chatbot = st.session_state.edit_shared_chatbot
+    st.title(f"{chatbot['name']} 지침 수정")
+
+    new_name = st.text_input("챗봇 이름", value=chatbot['name'])
+    new_description = st.text_input("챗봇 소개", value=chatbot['description'])
+    new_system_prompt = st.text_area("시스템 프롬프트", value=chatbot['system_prompt'], height=200)
+    new_welcome_message = st.text_input("웰컴 메시지", value=chatbot['welcome_message'])
+    new_background_color = st.color_picker("챗봇 카드 배경색", value=chatbot.get('background_color', '#F0F8FF'))
+
+    if st.button("변경사항 저장"):
+        if db is not None:
+            try:
+                db.shared_chatbots.update_one(
+                    {"_id": chatbot["_id"]},
+                    {"$set": {
+                        "name": new_name,
+                        "description": new_description,
+                        "system_prompt": new_system_prompt,
+                        "welcome_message": new_welcome_message,
+                        "background_color": new_background_color
+                    }}
+                )
+                st.success("공유 챗봇 지침이 성공적으로 수정되었습니다.")
+                st.session_state.current_page = 'shared_chatbots'
+                st.rerun()
+            except Exception as e:
+                st.error(f"공유 챗봇 지침 수정 중 오류가 발생했습니다: {str(e)}")
+        else:
+            st.error("데이터베이스 연결이 없어 공유 챗봇을 수정할 수 없습니다.")
+
+# 대화 내역 확인 페이지
+def show_chat_history_page():
+    st.title("대화 내역 확인")
+
+    if 'user' in st.session_state and st.session_state.user:
+        for i, chatbot in enumerate(st.session_state.user['chatbots']):
+            st.subheader(f"{i+1}. {chatbot['name']}")
+            st.write(chatbot['description'])
+            if st.button(f"대화 내역 보기 #{i}"):
+                st.write("--- 대화 내역 ---")
+                for message in chatbot['messages']:
+                    st.write(f"{message['role']}: {message['content']}")
+                st.write("---")
+    else:
+        st.warning("로그인이 필요합니다.")
+
 # 메인 애플리케이션
 def main_app():
     # 사이드바 메뉴
@@ -555,6 +654,9 @@ def main_app():
         st.rerun()
     if st.sidebar.button("수원외국어고등학교 공유 챗봇"):
         st.session_state.current_page = 'shared_chatbots'
+        st.rerun()
+    if st.sidebar.button("대화 내역 확인"):
+        st.session_state.current_page = 'chat_history'
         st.rerun()
     if st.sidebar.button("로그아웃"):
         st.session_state.user = None
@@ -572,8 +674,14 @@ def main_app():
         show_shared_chatbots_page()
     elif st.session_state.current_page == 'chatbot':
         show_chatbot_page()
+    elif st.session_state.current_page == 'shared_chatbot':
+        show_shared_chatbot_page()
+    elif st.session_state.current_page == 'chat_history':
+        show_chat_history_page()
     elif st.session_state.current_page == 'edit_chatbot':
         show_edit_chatbot_page()
+    elif st.session_state.current_page == 'edit_shared_chatbot':
+        show_edit_shared_chatbot_page()
 
 # 메인 실행 부분
 if 'current_page' not in st.session_state:
