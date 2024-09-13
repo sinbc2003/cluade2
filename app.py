@@ -17,7 +17,7 @@ client = MongoClient(MONGO_URI)
 db = client.chatbot_platform
 
 # Google Apps Script 웹 앱 URL
-GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwy0OivCMJ9dR9P9aiAFTILf__DXzDtvkq0MEq7ofUzF4MflXY2A1D5wrhdIcauFtUa/exec"
+GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
 
 # 로그인 함수
 def login(username, password):
@@ -27,7 +27,8 @@ def login(username, password):
         "password": password
     }
     try:
-        response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params)
+        response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
+        st.write(f"Debug - Full response: {response.text}")  # 전체 응답 내용 출력
         if response.text.strip().lower() == "true":
             user = db.users.find_one({"username": username})
             if user:
@@ -116,14 +117,15 @@ def show_login_page():
     username = st.text_input("아이디")
     password = st.text_input("비밀번호", type="password")
     if st.button("로그인"):
-        user = login(username, password)
-        if user:
-            st.session_state.user = user
-            st.session_state.current_page = 'home'
-            st.success("로그인 성공!")
-            st.rerun()
-        else:
-            st.error("아이디 또는 비밀번호가 잘못되었습니다.")
+        with st.spinner("로그인 중..."):
+            user = login(username, password)
+            if user:
+                st.session_state.user = user
+                st.session_state.current_page = 'home'
+                st.success("로그인 성공!")
+                st.rerun()
+            else:
+                st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
 # 홈 페이지 (기본 챗봇)
 def show_home_page():
