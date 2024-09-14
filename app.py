@@ -9,11 +9,12 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 import urllib.parse
 
-# 전역 변수로 db 선언
-db = None
 
 # Streamlit 페이지 설정
 st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
+
+# 전역 변수로 db 선언
+db = None
 
 # CSS 스타일 추가
 st.markdown("""
