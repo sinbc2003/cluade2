@@ -18,45 +18,31 @@ st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layo
 # CSS 스타일 추가
 st.markdown("""
 <style>
-    .stButton > button {
-        width: 100%;
-        border-radius: 20px;
-        height: 3em;
-        background-color: #E6F3FF;
-        color: #000000;
-        font-weight: bold;
-        margin-bottom: 10px;
+    .stButton>button {
+        background-color: #f0f8ff;
+        color: #4682b4;
+        border: 1px solid #4682b4;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-size: 16px;
+        transition: all 0.3s;
     }
-    .stButton > button:hover {
-        background-color: #B3D9FF;
+    .stButton>button:hover {
+        background-color: #4682b4;
+        color: #f0f8ff;
     }
     .chatbot-card {
+        border: 1px solid #ddd;
         border-radius: 10px;
         padding: 20px;
         margin-bottom: 20px;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
     }
     .chatbot-card img {
         width: 100px;
         height: 100px;
         border-radius: 50%;
         object-fit: cover;
-    }
-    .chatbot-info {
-        flex-grow: 1;
-        display: flex;
-        flex-direction: column;
-    }
-    .chatbot-description {
-        flex-grow: 1;
-        color: #333;
-    }
-    .chatbot-name {
-        color: #000;
-        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -301,15 +287,9 @@ def show_available_chatbots_page():
         with cols[i % 3]:
             st.markdown(f"""
             <div class="chatbot-card">
-                <div style="display: flex;">
-                    <div style="flex: 0 0 100px;">
-                        <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" class="chatbot-profile">
-                    </div>
-                    <div class="chatbot-info" style="flex: 1; padding-left: 20px;">
-                        <h3 class="chatbot-name">{chatbot['name']}</h3>
-                        <div class="chatbot-description">{chatbot['description']}</div>
-                    </div>
-                </div>
+                <h3>{chatbot['name']}</h3>
+                <p>{chatbot['description']}</p>
+                <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" alt="프로필 이미지">
             </div>
             """, unsafe_allow_html=True)
             if st.button(f"사용하기 #{i}"):
@@ -327,16 +307,10 @@ def show_shared_chatbots_page():
             with cols[i % 3]:
                 st.markdown(f"""
                 <div class="chatbot-card">
-                    <div style="display: flex;">
-                        <div style="flex: 0 0 100px;">
-                            <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" class="chatbot-profile">
-                        </div>
-                        <div class="chatbot-info" style="flex: 1; padding-left: 20px;">
-                            <h3 class="chatbot-name">{chatbot['name']}</h3>
-                            <div class="chatbot-description">{chatbot['description']}</div>
-                            <p>작성자: {chatbot['creator']}</p>
-                        </div>
-                    </div>
+                    <h3>{chatbot['name']}</h3>
+                    <p>{chatbot['description']}</p>
+                    <p>작성자: {chatbot['creator']}</p>
+                    <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" alt="프로필 이미지">
                 </div>
                 """, unsafe_allow_html=True)
                 if st.button(f"사용하기 #{i}"):
