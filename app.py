@@ -314,7 +314,7 @@ def delete_old_chat_history():
 
 # 홈 페이지 (기본 챗봇)
 def show_home_page():
-    st.title("기본 챗봇")
+    st.title("Default 봇")
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
 
     if 'home_messages' not in st.session_state:
@@ -521,7 +521,7 @@ def show_edit_chatbot_page():
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
-    st.title("사용 가능한 챗봇")
+    st.title("나만 사용 가능한 챗봇")
 
     if not st.session_state.user.get("chatbots"):
         st.info("아직 만든 챗봇이 없습니다. '새 챗봇 만들기'에서 첫 번째 챗봇을 만들어보세요!")
@@ -945,7 +945,7 @@ def main_app():
     menu_items = [
         ("홈", 'home'),
         ("새 챗봇 만들기", 'create_chatbot'),
-        ("사용 가능한 챗봇", 'available_chatbots'),
+        ("나만 사용 가능한 챗봇", 'available_chatbots'),
         ("수원외국어고등학교 공유 챗봇", 'shared_chatbots'),
         ("대화 내역 확인", 'chat_history'),
         ("로그아웃", 'logout')
