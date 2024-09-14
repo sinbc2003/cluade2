@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 from anthropic import Anthropic
 import os
