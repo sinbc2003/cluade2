@@ -5,3 +5,5 @@ google-generativeai
 requests
 pymongo
 dnspython
+gspread
+google-auth
