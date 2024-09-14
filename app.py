@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 import gspread
 from google.auth.exceptions import GoogleAuthError
+import traceback  # 추가
 
 # 전역 변수로 db 선언
 db = None
@@ -103,9 +104,6 @@ except Exception as e:
     st.error("데이터베이스 연결에 실패했습니다. 관리자에게 문의해주세요.")
     db = None
 
-# Google Apps Script 웹 앱 URL
-GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
-
 # API 키 가져오기
 ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
@@ -132,8 +130,9 @@ try:
     # private_key의 줄 바꿈 처리
     if 'private_key' in service_account_info:
         private_key = service_account_info['private_key']
-        private_key = private_key.replace('\\n', '\n')
-        service_account_info['private_key'] = private_key
+        if '\\n' in private_key:
+            private_key = private_key.replace('\\n', '\n')
+            service_account_info['private_key'] = private_key
 
     creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
     gs_client = gspread.authorize(creds)
@@ -159,6 +158,7 @@ except GoogleAuthError as e:
     sheet = None
 except Exception as e:
     st.error(f"Google Sheets 설정 중 오류가 발생했습니다: {str(e)}")
+    st.error(traceback.format_exc())  # 예외의 상세 정보 출력
     sheet = None
 
 # 모델 선택 드롭다운
