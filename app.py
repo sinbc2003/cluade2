@@ -14,6 +14,9 @@ import gspread
 from google.auth.exceptions import GoogleAuthError
 import traceback
 import pandas as pd
+import urllib.parse  # For URL encoding
+import base64  # For QR code image display
+import json
 
 # 전역 변수로 db 선언
 db = None
@@ -98,6 +101,12 @@ st.markdown("""
         padding: 0.8px 1.6px;
         width: auto;
         height: auto;
+    }
+    /* QR 코드 이미지 스타일 */
+    .qr-code img {
+        width: 150px;
+        height: 150px;
+        cursor: pointer;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -360,12 +369,12 @@ def show_login_page():
                 st.session_state.current_page = 'change_password'
                 st.session_state.username = username
                 st.warning("초기 비밀번호를 사용 중입니다. 비밀번호를 변경해주세요.")
-                st.rerun()
+                st.experimental_rerun()
             elif result:
                 st.session_state.user = result
                 st.session_state.current_page = 'home'
                 st.success("로그인 성공!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 pass  # 오류 메시지는 로그인 함수에서 처리됨
 
@@ -380,7 +389,7 @@ def show_change_password_page():
                 st.success("비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 다시 로그인해주세요.")
                 st.session_state.current_page = 'login'
                 st.session_state.username = ''
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("비밀번호 변경에 실패했습니다.")
         else:
@@ -517,6 +526,20 @@ def show_create_chatbot_page():
 
     profile_image_url = st.session_state.temp_profile_image_url
 
+    if is_shared:
+        # 기존 범주 가져오기
+        if db is not None:
+            existing_categories = db.shared_chatbots.distinct('category')
+        else:
+            existing_categories = []
+        category_option = st.selectbox('챗봇 범주 선택', options=existing_categories + ['새 범주 입력'])
+        if category_option == '새 범주 입력':
+            category = st.text_input('새 범주 입력')
+        else:
+            category = category_option
+    else:
+        category = None
+
     if st.button("프로필 이미지 생성"):
         with st.spinner("프로필 이미지를 생성 중입니다. 잠시만 기다려주세요..."):
             profile_image_prompt = f"Create a profile image for a chatbot named '{chatbot_name}'. Description: {chatbot_description}"
@@ -542,6 +565,9 @@ def show_create_chatbot_page():
             "background_color": background_color,
             "profile_image_url": st.session_state.temp_profile_image_url
         }
+        if is_shared:
+            new_chatbot['category'] = category  # 범주 추가
+
         if db is not None:
             try:
                 if is_shared:
@@ -567,7 +593,7 @@ def show_create_chatbot_page():
                 else:
                     st.session_state.current_chatbot = len(st.session_state.user['chatbots']) - 1
                     st.session_state.current_page = 'chatbot'
-                st.rerun()
+                st.experimental_rerun()
             except Exception as e:
                 st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
         else:
@@ -580,7 +606,7 @@ def show_create_chatbot_page():
             # 새로 생성된 챗봇으로 이동
             st.session_state.current_chatbot = len(st.session_state.user['chatbots']) - 1
             st.session_state.current_page = 'chatbot'
-            st.rerun()
+            st.experimental_rerun()
 
 # 챗봇 수정 페이지
 def show_edit_chatbot_page():
@@ -629,7 +655,7 @@ def show_edit_chatbot_page():
                 st.session_state.current_chatbot = st.session_state.editing_chatbot
                 st.session_state.pop('editing_chatbot', None)
                 st.session_state.current_page = 'chatbot'
-                st.rerun()
+                st.experimental_rerun()
             except Exception as e:
                 st.error(f"챗봇 수정 중 오류가 발생했습니다: {str(e)}")
         else:
@@ -638,7 +664,7 @@ def show_edit_chatbot_page():
             st.session_state.current_chatbot = st.session_state.editing_chatbot
             st.session_state.pop('editing_chatbot', None)
             st.session_state.current_page = 'chatbot'
-            st.rerun()
+            st.experimental_rerun()
 
 # 대화 내역 저장 함수 (공개 챗봇용)
 def save_public_chat_history(chatbot_id, user_name, messages):
@@ -700,19 +726,19 @@ def show_available_chatbots_page():
                 if st.button("사용하기", key=f"use_{i}"):
                     st.session_state.current_chatbot = i
                     st.session_state.current_page = 'chatbot'
-                    st.rerun()
+                    st.experimental_rerun()
             with col2:
                 if st.session_state.user["username"] == 'admin' or chatbot.get('creator', '') == st.session_state.user["username"]:
                     if st.button("수정하기", key=f"edit_{i}"):
                         st.session_state.editing_chatbot = i
                         st.session_state.current_page = 'edit_chatbot'
-                        st.rerun()
+                        st.experimental_rerun()
             with col3:
                 if st.session_state.user["username"] == 'admin' or chatbot.get('creator', '') == st.session_state.user["username"]:
                     if st.button("삭제하기", key=f"delete_{i}"):
                         if delete_chatbot(chatbot.get('_id'), chatbot.get('creator', '')):
                             st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
-                            st.rerun()
+                            st.experimental_rerun()
             # URL 생성 버튼 추가
             with st.expander("URL 생성", expanded=False):
                 selected_model = st.selectbox("모델 선택", MODEL_OPTIONS, key=f"model_select_{i}")
@@ -723,12 +749,27 @@ def show_available_chatbots_page():
                     shareable_url = f"{base_url}?chatbot_id={chatbot_id}&model={model_param}"
                     st.write(f"공유 가능한 URL: {shareable_url}")
 
+                    # QR 코드 생성
+                    qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={urllib.parse.quote(shareable_url)}"
+                    qr_code_response = requests.get(qr_code_url)
+                    if qr_code_response.status_code == 200:
+                        qr_code_image = qr_code_response.content
+                        # 이미지 표시
+                        st.markdown("<div class='qr-code'>", unsafe_allow_html=True)
+                        st.image(qr_code_image, caption="QR 코드 (클릭하여 확대)", use_column_width=False)
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        # 이미지 확대 기능
+                        if st.button("QR 코드 확대", key=f"enlarge_qr_{i}"):
+                            st.image(qr_code_image, caption="QR 코드 (전체화면)", use_column_width=True)
+                    else:
+                        st.error("QR 코드를 생성하는 데 실패했습니다.")
+
             # 챗봇 제작자만 볼 수 있는 'URL 사용자 대화내역 보기' 버튼 추가
             if chatbot.get('creator', '') == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
                 if st.button("URL 사용자 대화내역 보기", key=f"view_url_history_{i}"):
                     st.session_state.viewing_chatbot_history = str(chatbot['_id'])
                     st.session_state.current_page = 'view_public_chat_history'
-                    st.rerun()
+                    st.experimental_rerun()
 
 # 챗봇 삭제 함수 수정
 def delete_chatbot(chatbot_id, creator):
@@ -759,37 +800,51 @@ def show_shared_chatbots_page():
     st.title("수원외국어고등학교 공유 챗봇")
     if db is not None:
         shared_chatbots = list(db.shared_chatbots.find())
-        cols = st.columns(3)
-        for i, chatbot in enumerate(shared_chatbots):
-            with cols[i % 3]:
-                st.markdown(f"""
-                <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
-                    <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/100')}" alt="프로필 이미지">
-                    <div class="chatbot-info">
-                        <div class="chatbot-name">{chatbot['name']}</div>
-                        <div class="chatbot-description">{chatbot['description']}</div>
-                        <p>작성자: {chatbot['creator']}</p>
+        if not shared_chatbots:
+            st.info("공유된 챗봇이 없습니다.")
+            return
+
+        # 범주별로 챗봇 그룹화
+        categories = {}
+        for chatbot in shared_chatbots:
+            category = chatbot.get('category', '기타')
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(chatbot)
+
+        for category, chatbots_in_category in categories.items():
+            st.subheader(f"범주: {category}")
+            cols = st.columns(3)
+            for i, chatbot in enumerate(chatbots_in_category):
+                with cols[i % 3]:
+                    st.markdown(f"""
+                    <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
+                        <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/100')}" alt="프로필 이미지">
+                        <div class="chatbot-info">
+                            <div class="chatbot-name">{chatbot['name']}</div>
+                            <div class="chatbot-description">{chatbot['description']}</div>
+                            <p>작성자: {chatbot['creator']}</p>
+                        </div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    if st.button("사용하기", key=f"use_shared_{i}"):
-                        st.session_state.current_shared_chatbot = chatbot
-                        st.session_state.current_page = 'shared_chatbot'
-                        st.rerun()
-                with col2:
-                    if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
-                        if st.button("수정하기", key=f"edit_shared_{i}"):
-                            st.session_state.editing_shared_chatbot = chatbot
-                            st.session_state.current_page = 'edit_shared_chatbot'
-                            st.rerun()
-                with col3:
-                    if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
-                        if st.button("삭제하기", key=f"delete_shared_{i}"):
-                            if delete_shared_chatbot(chatbot['_id']):
-                                st.success(f"'{chatbot['name']}' 공유 챗봇이 삭제되었습니다.")
-                                st.rerun()
+                    """, unsafe_allow_html=True)
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if st.button("사용하기", key=f"use_shared_{category}_{i}"):
+                            st.session_state.current_shared_chatbot = chatbot
+                            st.session_state.current_page = 'shared_chatbot'
+                            st.experimental_rerun()
+                    with col2:
+                        if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
+                            if st.button("수정하기", key=f"edit_shared_{category}_{i}"):
+                                st.session_state.editing_shared_chatbot = chatbot
+                                st.session_state.current_page = 'edit_shared_chatbot'
+                                st.experimental_rerun()
+                    with col3:
+                        if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
+                            if st.button("삭제하기", key=f"delete_shared_{category}_{i}"):
+                                if delete_shared_chatbot(chatbot['_id']):
+                                    st.success(f"'{chatbot['name']}' 공유 챗봇이 삭제되었습니다.")
+                                    st.experimental_rerun()
     else:
         st.write("데이터베이스 연결이 없어 공유 챗봇을 불러올 수 없습니다.")
 
@@ -829,6 +884,17 @@ def show_edit_shared_chatbot_page():
     new_welcome_message = st.text_input("웰컴 메시지", value=chatbot['welcome_message'])
     new_background_color = st.color_picker("챗봇 카드 배경색 선택", value=chatbot.get('background_color', '#FFFFFF'))
 
+    # 범주 수정
+    if db is not None:
+        existing_categories = db.shared_chatbots.distinct('category')
+    else:
+        existing_categories = []
+    category_option = st.selectbox('챗봇 범주 선택', options=existing_categories + ['새 범주 입력'], index=existing_categories.index(chatbot.get('category', '기타')) if chatbot.get('category', '기타') in existing_categories else len(existing_categories))
+    if category_option == '새 범주 입력':
+        new_category = st.text_input('새 범주 입력', value=chatbot.get('category', ''))
+    else:
+        new_category = category_option
+
     if st.button("프로필 이미지 재생성"):
         with st.spinner("프로필 이미지를 재생성 중입니다. 잠시만 기다려주세요..."):
             profile_image_prompt = f"Create a profile image for a chatbot named '{new_name}'. Description: {new_description}"
@@ -849,6 +915,7 @@ def show_edit_shared_chatbot_page():
         chatbot['system_prompt'] = new_system_prompt
         chatbot['welcome_message'] = new_welcome_message
         chatbot['background_color'] = new_background_color
+        chatbot['category'] = new_category
 
         if db is not None:
             try:
@@ -860,7 +927,7 @@ def show_edit_shared_chatbot_page():
                 st.session_state.current_shared_chatbot = chatbot
                 st.session_state.pop('editing_shared_chatbot', None)
                 st.session_state.current_page = 'shared_chatbot'
-                st.rerun()
+                st.experimental_rerun()
             except Exception as e:
                 st.error(f"공유 챗봇 수정 중 오류가 발생했습니다: {str(e)}")
         else:
@@ -894,7 +961,7 @@ def show_chatbot_page():
         if st.button("수정", key="edit_button"):
             st.session_state.editing_chatbot = st.session_state.current_chatbot
             st.session_state.current_page = 'edit_chatbot'
-            st.rerun()
+            st.experimental_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
@@ -1017,7 +1084,7 @@ def show_shared_chatbot_page():
         if st.button("수정", key="edit_button"):
             st.session_state.editing_shared_chatbot = chatbot
             st.session_state.current_page = 'edit_shared_chatbot'
-            st.rerun()
+            st.experimental_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
@@ -1098,32 +1165,39 @@ def show_shared_chatbot_page():
 
 # 비로그인 사용자용 챗봇 페이지 함수 수정
 def show_public_chatbot_page(chatbot_id):
-    st.title("챗봇 이용하기")
+    # 챗봇 불러오기
+    chatbot = None
+    if db is not None:
+        user = db.users.find_one({"chatbots._id": ObjectId(chatbot_id)}, {"chatbots.$": 1})
+        if user:
+            chatbot = user['chatbots'][0]
+    else:
+        st.error("데이터베이스 연결이 필요합니다.")
+        return
+
+    if not chatbot:
+        st.error("챗봇을 찾을 수 없습니다.")
+        return
+
+    # URL에서 모델 파라미터 가져오기
+    query_params = st.experimental_get_query_params()
+    selected_model = query_params.get('model', ['gpt-4o'])[0]
+
+    # 챗봇 이름과 프로필 이미지 표시
+    st.markdown(f"""
+    <div class="chatbot-title">
+        <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/150')}" alt="프로필 이미지">
+        <h1>{chatbot['name']}</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
     if 'user_name' not in st.session_state:
         name = st.text_input("이름을 입력하세요")
-        if st.button("챗봇 시작하기"):
-            if name:
-                st.session_state.user_name = name
-                st.experimental_rerun()
-    else:
-        # 챗봇 불러오기
-        chatbot = None
-        if db is not None:
-            user = db.users.find_one({"chatbots._id": ObjectId(chatbot_id)}, {"chatbots.$": 1})
-            if user:
-                chatbot = user['chatbots'][0]
-        else:
-            st.error("데이터베이스 연결이 필요합니다.")
-            return
-
-        if not chatbot:
-            st.error("챗봇을 찾을 수 없습니다.")
-            return
-
-        # URL에서 모델 파라미터 가져오기
-        query_params = st.experimental_get_query_params()
-        selected_model = query_params.get('model', ['gpt-4o'])[0]
-
+        start_button_clicked = st.button("챗봇 시작하기")
+        if name and start_button_clicked:
+            st.session_state.user_name = name
+            # st.experimental_rerun()을 제거하고 세션 상태에 따라 진행
+    if 'user_name' in st.session_state:
         # 대화 시작
         start_chatting(chatbot, st.session_state.user_name, selected_model)
 
@@ -1170,8 +1244,8 @@ def start_chatting(chatbot, user_name, selected_model):
                             if chunk.choices[0].delta.content is not None:
                                 full_response += chunk.choices[0].delta.content
                                 message_placeholder.markdown(full_response + "▌")
-                        # 사용량 기록
-                        record_usage(user_name, selected_model, start_time)
+                        # 사용량 기록: 챗봇 제작자의 이름으로 기록
+                        record_usage(chatbot['creator'], selected_model, start_time)
                     elif "gemini" in selected_model:
                         model = genai.GenerativeModel(selected_model)
                         response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
@@ -1179,7 +1253,7 @@ def start_chatting(chatbot, user_name, selected_model):
                             if chunk.text:
                                 full_response += chunk.text
                                 message_placeholder.markdown(full_response + "▌")
-                        record_usage(user_name, selected_model, start_time)
+                        record_usage(chatbot['creator'], selected_model, start_time)
                     elif "claude" in selected_model:
                         with anthropic_client.messages.stream(
                             max_tokens=1000,
@@ -1190,7 +1264,7 @@ def start_chatting(chatbot, user_name, selected_model):
                             for text in stream.text_stream:
                                 full_response += text
                                 message_placeholder.markdown(full_response + "▌")
-                        record_usage(user_name, selected_model, start_time)
+                        record_usage(chatbot['creator'], selected_model, start_time)
                 except Exception as e:
                     st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
 
@@ -1376,11 +1450,11 @@ def main_app():
             if page == 'logout':
                 st.session_state.user = None
                 st.session_state.current_page = 'login'
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.session_state.current_page = page
 
-            st.rerun()  # 페이지 갱신
+            st.experimental_rerun()  # 페이지 갱신
 
     # 현재 페이지에 따라 적절한 내용 표시
     if st.session_state.current_page == 'home':
