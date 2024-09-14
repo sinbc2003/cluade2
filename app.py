@@ -374,7 +374,7 @@ def show_home_page():
                             for text in stream.text_stream:
                                 full_response += text
                                 message_placeholder.markdown(full_response + "▌")
-                    message_placeholder.markdown(full_response)
+                        message_placeholder.markdown(full_response)
                 except Exception as e:
                     st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
 
@@ -583,6 +583,13 @@ def show_available_chatbots_page():
                 chatbot_id = str(chatbot.get('_id', i))
                 shareable_url = f"{base_url}?chatbot_id={chatbot_id}"
                 st.write(f"공유 가능한 URL: {shareable_url}")
+
+            # 챗봇 제작자만 볼 수 있는 'URL 사용자 대화내역 보기' 버튼 추가
+            if chatbot.get('creator', '') == st.session_state.user["username"]:
+                if st.button("URL 사용자 대화내역 보기", key=f"view_url_history_{i}"):
+                    st.session_state.viewing_chatbot_history = chatbot['_id']
+                    st.session_state.current_page = 'view_public_chat_history'
+                    st.rerun()
 
 # 챗봇 삭제 함수
 def delete_chatbot(index):
@@ -1082,6 +1089,40 @@ def delete_specific_chat_history(history_id):
         except Exception as e:
             st.error(f"대화 내역 삭제 중 오류가 발생했습니다: {str(e)}")
 
+# URL 사용자 대화내역 보기 함수 추가
+def show_public_chatbot_history():
+    st.title("URL 사용자 대화내역")
+
+    chatbot_id = st.session_state.viewing_chatbot_history
+
+    # 챗봇 정보 가져오기 및 제작자 확인
+    user = db.users.find_one(
+        {"chatbots._id": ObjectId(chatbot_id)},
+        {"chatbots.$": 1}
+    )
+    if user:
+        chatbot = user['chatbots'][0]
+        if chatbot.get('creator', '') != st.session_state.user["username"]:
+            st.error("해당 챗봇의 대화 내역을 볼 권한이 없습니다.")
+            return
+    else:
+        st.error("챗봇을 찾을 수 없습니다.")
+        return
+
+    if db is not None:
+        chat_histories = db.public_chat_history.find({
+            "chatbot_id": chatbot_id
+        }).sort("timestamp", -1)
+
+        for history in chat_histories:
+            st.write(f"사용자 이름: {history['user_name']}")
+            st.write(f"대화 시간: {history['timestamp']}")
+            for message in history['messages']:
+                st.write(f"{message['role']}: {message['content']}")
+            st.write("---")
+    else:
+        st.warning("데이터베이스 연결이 없어 대화 내역을 불러올 수 없습니다.")
+
 # 메인 애플리케이션
 def main_app():
     # 사이드바 메뉴
@@ -1131,6 +1172,8 @@ def main_app():
         show_edit_shared_chatbot_page()
     elif st.session_state.current_page == 'change_password':
         show_change_password_page()
+    elif st.session_state.current_page == 'view_public_chat_history':
+        show_public_chatbot_history()
     else:
         st.session_state.current_page = 'home'
         show_home_page()
