@@ -207,25 +207,32 @@ def show_login_page():
 
 # 홈 페이지 (기본 챗봇)
 def show_home_page():
-    st.title("기본 챗봇")
+    st.set_page_config(layout="wide")
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("기본 챗봇")
+    with col2:
+        st.image("https://github.com/your_username/your_repo/raw/main/chatbot_profile.png", width=100)  # GitHub에서 호스팅하는 프로필 이미지
+    
+    st.write("AI Assistant와 대화를 나누어보세요.")
+    
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
 
     if 'home_messages' not in st.session_state:
         st.session_state.home_messages = []
+        st.session_state.home_messages.append({"role": "assistant", "content": "안녕하세요! 어떤 도움이 필요하신가요?"})
 
-    for message in st.session_state.home_messages:
-        with st.chat_message(message["role"]):
-            if message["role"] == "assistant" and "image_url" in message:
-                st.image(message["image_url"], caption="생성된 이미지")
-            st.markdown(message["content"])
+    chat_container = st.container()
+    
+    with chat_container:
+        for message in st.session_state.home_messages:
+            with st.chat_message(message["role"]):
+                if message["role"] == "assistant" and "image_url" in message:
+                    st.image(message["image_url"], caption="생성된 이미지")
+                st.markdown(message["content"])
 
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        prompt = st.chat_input("무엇을 도와드릴까요?")
-    with col2:
-        if st.button("초기화", key="reset_home", help="대화 내역을 초기화합니다.", use_container_width=True):
-            st.session_state.home_messages = []
-            st.rerun()
+    prompt = st.chat_input("메시지를 입력하세요")
 
     if prompt:
         st.session_state.home_messages.append({"role": "user", "content": prompt})
@@ -283,6 +290,10 @@ def show_home_page():
                 if full_response:
                     st.session_state.home_messages.append({"role": "assistant", "content": full_response})
 
+    # 초기화 버튼을 채팅 입력 필드 아래에 배치
+    if st.button("대화 초기화", key="reset_home", help="대화 내역을 초기화합니다."):
+        st.session_state.home_messages = [{"role": "assistant", "content": "안녕하세요! 어떤 도움이 필요하신가요?"}]
+        st.rerun()
 # 새 챗봇 만들기 페이지
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
