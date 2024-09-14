@@ -280,7 +280,6 @@ def show_home_page():
         st.rerun()
 
 # 새 챗봇 만들기 페이지
-# 새 챗봇 만들기 페이지
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
     chatbot_name = st.text_input("챗봇 이름")
@@ -290,7 +289,7 @@ def show_create_chatbot_page():
     is_shared = st.checkbox("다른 교사와 공유하기")
     background_color = st.color_picker("챗봇 카드 배경색 선택", "#FFFFFF")
     
-    profile_image_url = "https://via.placeholder.com/60"  # 기본 이미지 URL 설정
+    profile_image_url = st.session_state.get('temp_profile_image_url', "https://via.placeholder.com/60")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -317,6 +316,8 @@ def show_create_chatbot_page():
                         )
                     st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
                     st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
+                    # 임시 프로필 이미지 URL 초기화
+                    st.session_state.pop('temp_profile_image_url', None)
                 except Exception as e:
                     st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
             else:
@@ -324,6 +325,8 @@ def show_create_chatbot_page():
                     st.session_state.user['chatbots'] = []
                 st.session_state.user['chatbots'].append(new_chatbot)
                 st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다! (오프라인 모드)")
+                # 임시 프로필 이미지 URL 초기화
+                st.session_state.pop('temp_profile_image_url', None)
     
     with col2:
         if st.button("프로필 이미지 생성"):
@@ -331,13 +334,13 @@ def show_create_chatbot_page():
             generated_image_url = generate_image(profile_image_prompt)
             if generated_image_url:
                 st.image(generated_image_url, caption="생성된 프로필 이미지", width=200)
-                profile_image_url = generated_image_url
+                st.session_state.temp_profile_image_url = generated_image_url
                 st.success("프로필 이미지가 생성되었습니다. 챗봇 생성 시 이 이미지가 사용됩니다.")
             else:
                 st.error("프로필 이미지 생성에 실패했습니다. 기본 이미지가 사용됩니다.")
 
     st.markdown("**참고:** 프로필 이미지를 생성한 후 챗봇을 생성하세요. 생성된 이미지가 챗봇의 프로필 이미지로 사용됩니다.")
-
+    
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
     st.title("사용 가능한 챗봇")
@@ -350,7 +353,7 @@ def show_available_chatbots_page():
                     <div class="chatbot-name">{chatbot['name']}</div>
                     <div class="chatbot-description">{chatbot['description']}</div>
                 </div>
-                <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지">
+                <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지" style="width:60px;height:60px;object-fit:cover;">
             </div>
             """, unsafe_allow_html=True)
             col1, col2 = st.columns(2)
@@ -364,7 +367,6 @@ def show_available_chatbots_page():
                     if delete_chatbot(i):
                         st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
                         st.rerun()
-
 # 챗봇 삭제 함수
 def delete_chatbot(index):
     if db is not None:
@@ -400,7 +402,7 @@ def show_shared_chatbots_page():
                         <div class="chatbot-description">{chatbot['description']}</div>
                         <p>작성자: {chatbot['creator']}</p>
                     </div>
-                    <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지">
+                    <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지" style="width:60px;height:60px;object-fit:cover;">
                 </div>
                 """, unsafe_allow_html=True)
                 col1, col2 = st.columns(2)
