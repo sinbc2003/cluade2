@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 import gspread
 from google.auth.exceptions import GoogleAuthError
-import traceback  # 추가
+import traceback
 
 # 전역 변수로 db 선언
 db = None
@@ -207,38 +207,68 @@ def generate_image(prompt):
         st.error("이미지 생성에 실패했습니다. 다시 시도해주세요.")
         return None
 
+# 사용자 데이터 캐싱 함수
+@st.cache_data(ttl=600)
+def get_users_data():
+    if sheet is None:
+        st.error("Google Sheets 연결에 실패하여 사용자 데이터를 불러올 수 없습니다.")
+        return None
+    try:
+        records = sheet.get_all_records()
+        return records
+    except Exception as e:
+        st.error(f"사용자 데이터 불러오기 중 오류가 발생했습니다: {str(e)}")
+        return None
+
 # 로그인 함수 수정
 def login(username, password):
-    if sheet is None:
-        st.error("Google Sheets 연결에 실패하여 로그인할 수 없습니다.")
+    users_data = get_users_data()
+    if users_data is None:
+        st.error("사용자 데이터를 불러올 수 없어 로그인할 수 없습니다.")
         return None
 
     try:
         # 사용자 찾기
-        cell = sheet.find(username, in_column=1)
-        if cell:
-            row = sheet.row_values(cell.row)
-            if row[1] == password:
-                if password == "1111":
-                    return "change_password"
-                return {"username": username, "chatbots": []}
+        for row in users_data:
+            if row['아이디'] == username:
+                if row['비밀번호'] == password:
+                    if password == "1111":
+                        return "change_password"
+                    # 데이터베이스에서 사용자 정보 가져오기
+                    if db is not None:
+                        user = db.users.find_one({"username": username})
+                        if user:
+                            return user
+                        else:
+                            # 사용자 정보가 없으면 새로 생성
+                            new_user = {"username": username, "chatbots": []}
+                            db.users.insert_one(new_user)
+                            return new_user
+                    else:
+                        return {"username": username, "chatbots": []}
+                else:
+                    break  # 비밀번호가 일치하지 않음
     except Exception as e:
         st.error(f"로그인 중 오류가 발생했습니다: {str(e)}")
     return None
 
 # 비밀번호 변경 함수 수정
 def change_password(username, new_password):
-    if sheet is None:
-        st.error("Google Sheets 연결에 실패하여 비밀번호를 변경할 수 없습니다.")
+    users_data = get_users_data()
+    if users_data is None:
+        st.error("사용자 데이터를 불러올 수 없어 비밀번호를 변경할 수 없습니다.")
         return False
 
     try:
         # 사용자 찾기
-        cell = sheet.find(username, in_column=1)
-        if cell:
-            # 비밀번호 업데이트
-            sheet.update_cell(cell.row, 2, new_password)
-            return True
+        for idx, row in enumerate(users_data):
+            if row['아이디'] == username:
+                # 비밀번호 업데이트
+                row_number = idx + 2  # 헤더를 고려하여 +2
+                sheet.update_cell(row_number, 2, new_password)
+                # 캐시 데이터 갱신
+                get_users_data.clear()
+                return True
         else:
             return False
     except Exception as e:
@@ -437,6 +467,7 @@ def show_create_chatbot_page():
                         {"$push": {"chatbots": new_chatbot}},
                         upsert=True
                     )
+                    # 사용자 정보 갱신
                     st.session_state.user = db.users.find_one({"username": st.session_state.user["username"]})
                 st.success(f"'{chatbot_name}' 챗봇이 생성되었습니다!")
                 # 임시 프로필 이미지 URL 초기화
@@ -587,7 +618,7 @@ def show_available_chatbots_page():
             # 챗봇 제작자만 볼 수 있는 'URL 사용자 대화내역 보기' 버튼 추가
             if chatbot.get('creator', '') == st.session_state.user["username"]:
                 if st.button("URL 사용자 대화내역 보기", key=f"view_url_history_{i}"):
-                    st.session_state.viewing_chatbot_history = chatbot['_id']
+                    st.session_state.viewing_chatbot_history = str(chatbot['_id'])
                     st.session_state.current_page = 'view_public_chat_history'
                     st.rerun()
 
@@ -1089,7 +1120,7 @@ def delete_specific_chat_history(history_id):
         except Exception as e:
             st.error(f"대화 내역 삭제 중 오류가 발생했습니다: {str(e)}")
 
-# URL 사용자 대화내역 보기 함수 추가
+# URL 사용자 대화내역 보기 함수 수정
 def show_public_chatbot_history():
     st.title("URL 사용자 대화내역")
 
@@ -1110,16 +1141,27 @@ def show_public_chatbot_history():
         return
 
     if db is not None:
-        chat_histories = db.public_chat_history.find({
-            "chatbot_id": chatbot_id
-        }).sort("timestamp", -1)
+        # 사용자 이름 목록 가져오기
+        user_names = db.public_chat_history.distinct("user_name", {"chatbot_id": chatbot_id})
 
-        for history in chat_histories:
-            st.write(f"사용자 이름: {history['user_name']}")
-            st.write(f"대화 시간: {history['timestamp']}")
-            for message in history['messages']:
-                st.write(f"{message['role']}: {message['content']}")
-            st.write("---")
+        if not user_names:
+            st.info("아직 대화 내역이 없습니다.")
+            return
+
+        selected_user = st.selectbox("사용자 선택", sorted(user_names))
+
+        if selected_user:
+            # 선택한 사용자에 대한 대화 내역 가져오기
+            chat_histories = db.public_chat_history.find({
+                "chatbot_id": chatbot_id,
+                "user_name": selected_user
+            }).sort("timestamp", -1)
+
+            for history in chat_histories:
+                st.write(f"대화 시간: {history['timestamp']}")
+                for message in history['messages']:
+                    st.write(f"{message['role']}: {message['content']}")
+                st.write("---")
     else:
         st.warning("데이터베이스 연결이 없어 대화 내역을 불러올 수 없습니다.")
 
@@ -1146,6 +1188,12 @@ def main_app():
                 st.session_state.current_page = page
 
             st.rerun()  # 페이지 갱신
+
+    # 사이드바 맨 아래에 작은 글씨 추가
+    st.sidebar.markdown("""
+    ---
+    <small>제작 : 수원외고 교사 신병철(sinbc2004@naver.com)</small>
+    """, unsafe_allow_html=True)
 
     # 현재 페이지에 따라 적절한 내용 표시
     if st.session_state.current_page == 'home':
