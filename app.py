@@ -401,7 +401,8 @@ def show_chatbot_page():
             st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
     if st.button("대화 내역 초기화"):
-        chatbot['messages'] = [{"role": "assistant", "content": chatbot['welcome_message']}]
+        default_welcome_message = "안녕하세요! 무엇을 도와드릴까요?"
+        chatbot['messages'] = [{"role": "assistant", "content": chatbot.get('welcome_message', default_welcome_message)}]
         if db is not None:
             try:
                 db.users.update_one(
