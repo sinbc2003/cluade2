@@ -430,6 +430,8 @@ def show_create_chatbot_page():
                     result = db.shared_chatbots.insert_one(new_chatbot)
                     new_chatbot['_id'] = result.inserted_id
                 else:
+                    # 챗봇에 고유 ID 추가
+                    new_chatbot['_id'] = ObjectId()
                     db.users.update_one(
                         {"username": st.session_state.user["username"]},
                         {"$push": {"chatbots": new_chatbot}},
@@ -519,7 +521,21 @@ def show_edit_chatbot_page():
             st.session_state.current_page = 'chatbot'
             st.rerun()
 
-# 사용 가능한 챗봇 페이지
+# 대화 내역 저장 함수 (공개 챗봇용)
+def save_public_chat_history(chatbot_id, user_name, messages):
+    if db is not None:
+        try:
+            chat_history = {
+                "chatbot_id": chatbot_id,
+                "user_name": user_name,
+                "timestamp": datetime.now(),
+                "messages": messages
+            }
+            db.public_chat_history.insert_one(chat_history)
+        except Exception as e:
+            st.error(f"대화 내역 저장 중 오류가 발생했습니다: {str(e)}")
+
+# 나만 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
     st.title("나만 사용 가능한 챗봇")
 
@@ -555,6 +571,12 @@ def show_available_chatbots_page():
                     if delete_chatbot(i):
                         st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
                         st.rerun()
+                # URL 생성 버튼 추가
+                if st.button("URL 생성", key=f"generate_url_{i}"):
+                    chatbot_id = str(chatbot.get('_id', i))
+                    base_url = st.request.host_url
+                    shareable_url = f"{base_url}?chatbot_id={chatbot_id}"
+                    st.write(f"공유 가능한 URL: {shareable_url}")
 
 # 챗봇 삭제 함수
 def delete_chatbot(index):
@@ -563,10 +585,11 @@ def delete_chatbot(index):
             chatbot = st.session_state.user["chatbots"][index]
             db.users.update_one(
                 {"username": st.session_state.user["username"]},
-                {"$pull": {"chatbots": {"name": chatbot["name"]}}}
+                {"$pull": {"chatbots": {"_id": chatbot["_id"]}}}
             )
             # 관련된 대화 내역도 삭제
             db.chat_history.delete_many({"chatbot_name": chatbot["name"], "user": st.session_state.user["username"]})
+            db.public_chat_history.delete_many({"chatbot_id": chatbot["_id"]})
             st.session_state.user = db.users.find_one({"username": st.session_state.user["username"]})
             return True
         except Exception as e:
@@ -895,6 +918,105 @@ def show_shared_chatbot_page():
                 if full_response:
                     chatbot['messages'].append({"role": "assistant", "content": full_response})
 
+# 비로그인 사용자용 챗봇 페이지 함수 추가
+def show_public_chatbot_page(chatbot_id):
+    st.title("챗봇 이용하기")
+    name = st.text_input("이름을 입력하세요")
+    if 'user_name' not in st.session_state:
+        st.session_state.user_name = None
+
+    if st.button("챗봇 시작하기") or st.session_state.user_name:
+        if name:
+            st.session_state.user_name = name
+        if st.session_state.user_name:
+            # 챗봇 불러오기
+            chatbot = None
+            if db is not None:
+                user = db.users.find_one({"chatbots._id": ObjectId(chatbot_id)}, {"chatbots.$": 1})
+                if user:
+                    chatbot = user['chatbots'][0]
+            else:
+                st.error("데이터베이스 연결이 필요합니다.")
+                return
+
+            if not chatbot:
+                st.error("챗봇을 찾을 수 없습니다.")
+                return
+
+            # 대화 시작
+            start_chatting(chatbot, st.session_state.user_name)
+
+# 대화 시작 함수 추가
+def start_chatting(chatbot, user_name):
+    if 'public_chatbot_messages' not in st.session_state:
+        st.session_state.public_chatbot_messages = [{"role": "assistant", "content": chatbot.get('welcome_message', "안녕하세요! 무엇을 도와드릴까요?")}]
+
+    for message in st.session_state.public_chatbot_messages:
+        with st.chat_message(message["role"]):
+            if message["role"] == "assistant" and "image_url" in message:
+                st.image(message["image_url"], caption="생성된 이미지")
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("무엇을 도와드릴까요?"):
+        st.session_state.public_chatbot_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+
+            if is_image_request(prompt):
+                message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
+                with st.spinner("이미지 생성 중..."):
+                    image_url = generate_image(prompt)
+                    if image_url:
+                        st.image(image_url, caption="생성된 이미지")
+                        full_response = "요청하신 이미지를 생성했습니다. 위의 이미지를 확인해 주세요."
+                        st.session_state.public_chatbot_messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
+                    else:
+                        full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
+            else:
+                try:
+                    selected_model = "gpt-4o"  # 기본 모델 설정 또는 필요에 따라 수정
+                    if "gpt" in selected_model:
+                        response = openai_client.chat.completions.create(
+                            model=selected_model,
+                            messages=[{"role": "system", "content": chatbot['system_prompt']}] + st.session_state.public_chatbot_messages,
+                            stream=True
+                        )
+                        for chunk in response:
+                            if chunk.choices[0].delta.content is not None:
+                                full_response += chunk.choices[0].delta.content
+                                message_placeholder.markdown(full_response + "▌")
+                    elif "gemini" in selected_model:
+                        model = genai.GenerativeModel(selected_model)
+                        response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
+                        for chunk in response:
+                            if chunk.text:
+                                full_response += chunk.text
+                                message_placeholder.markdown(full_response + "▌")
+                    elif "claude" in selected_model:
+                        with anthropic_client.messages.stream(
+                            max_tokens=1000,
+                            messages=st.session_state.public_chatbot_messages,
+                            model=selected_model,
+                            system=chatbot['system_prompt'],
+                        ) as stream:
+                            for text in stream.text_stream:
+                                full_response += text
+                                message_placeholder.markdown(full_response + "▌")
+                except Exception as e:
+                    st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
+
+                # 대화 내역에 추가
+                if full_response:
+                    st.session_state.public_chatbot_messages.append({"role": "assistant", "content": full_response})
+                    message_placeholder.markdown(full_response)
+
+            # 대화 내역 저장
+            save_public_chat_history(chatbot['_id'], user_name, st.session_state.public_chatbot_messages)
+
 # 대화 내역 확인 페이지
 def show_chat_history_page():
     st.title("대화 내역 확인")
@@ -903,7 +1025,7 @@ def show_chat_history_page():
         for i, chatbot in enumerate(st.session_state.user.get('chatbots', [])):
             st.subheader(f"{i+1}. {chatbot['name']}")
             st.write(chatbot['description'])
-            if st.button(f"대화 내역 보기 #{i}"):
+            if st.button(f"개인 대화 내역 보기 #{i}"):
                 st.write("--- 현재 대화 내역 ---")
                 for message in chatbot['messages']:
                     st.write(f"{message['role']}: {message['content']}")
@@ -927,6 +1049,22 @@ def show_chat_history_page():
                             st.success("선택한 대화 내역이 삭제되었습니다.")
                 else:
                     st.warning("데이터베이스 연결이 없어 이전 대화 내역을 불러올 수 없습니다.")
+
+            if st.button(f"공개 대화 내역 보기 #{i}"):
+                if db is not None:
+                    st.write("--- 공개 대화 내역 ---")
+                    chat_histories = db.public_chat_history.find({
+                        "chatbot_id": chatbot.get('_id')
+                    }).sort("timestamp", -1)
+
+                    for history in chat_histories:
+                        st.write(f"사용자 이름: {history['user_name']}")
+                        st.write(f"대화 시간: {history['timestamp']}")
+                        for message in history['messages']:
+                            st.write(f"{message['role']}: {message['content']}")
+                        st.write("---")
+                else:
+                    st.warning("데이터베이스 연결이 없어 공개 대화 내역을 불러올 수 없습니다.")
     else:
         st.warning("로그인이 필요합니다.")
 
@@ -996,7 +1134,11 @@ def main_app():
 
 # 메인 실행 부분
 def main():
-    if st.session_state.current_page == 'login':
+    query_params = st.experimental_get_query_params()
+    if 'chatbot_id' in query_params:
+        chatbot_id = query_params['chatbot_id'][0]
+        show_public_chatbot_page(chatbot_id)
+    elif st.session_state.current_page == 'login':
         show_login_page()
     elif st.session_state.current_page == 'change_password':
         show_change_password_page()
