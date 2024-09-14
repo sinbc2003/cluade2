@@ -518,7 +518,7 @@ def show_create_chatbot_page():
     chatbot_description = st.text_input("챗봇 소개")
     system_prompt = st.text_area("시스템 프롬프트", value=
 """역할 : 당신의 역할은 {}이다.
-  규칙 : 다음 규칙을 따라 사용자에게 답변한다.
+규칙 : 다음 규칙을 따라 사용자에게 답변한다.
 - {내용1}
 - {내용2}
 - {내용3}""", height=300)
