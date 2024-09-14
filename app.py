@@ -658,4 +658,3 @@ if 'user' not in st.session_state or not st.session_state.user:
     show_login_page()
 else:
     main_app()
-```
