@@ -568,7 +568,7 @@ def edit_chatbot(idx):
 def delete_chatbot_action(idx):
     if delete_chatbot(idx):
         st.success(f"'{st.session_state.user['chatbots'][idx]['name']}' 챗봇이 삭제되었습니다.")
-        st.experimental_rerun()
+        st.rerun()
 
     # 챗봇 삭제 함수
     def delete_chatbot(index):
@@ -639,7 +639,7 @@ def delete_chatbot_action(idx):
         chatbot_id = shared_chatbots[idx]['_id']
         if delete_shared_chatbot(chatbot_id):
             st.success(f"'{shared_chatbots[idx]['name']}' 공유 챗봇이 삭제되었습니다.")
-            st.experimental_rerun()
+            st.rerun()
 
     # 공유 챗봇 삭제 함수
     def delete_shared_chatbot(chatbot_id):
