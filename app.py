@@ -267,7 +267,6 @@ def show_login_page():
                 st.experimental_rerun()
             else:
                 st.error("아이디 또는 비밀번호가 잘못되었습니다.")
-
 # 대화 내역 저장 함수
 def save_chat_history(chatbot_name, messages):
     if db is not None:
