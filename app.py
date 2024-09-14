@@ -369,12 +369,12 @@ def show_login_page():
                 st.session_state.current_page = 'change_password'
                 st.session_state.username = username
                 st.warning("초기 비밀번호를 사용 중입니다. 비밀번호를 변경해주세요.")
-                st.experimental_rerun()
+                st.rerun()
             elif result:
                 st.session_state.user = result
                 st.session_state.current_page = 'home'
                 st.success("로그인 성공!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 pass  # 오류 메시지는 로그인 함수에서 처리됨
 
@@ -389,7 +389,7 @@ def show_change_password_page():
                 st.success("비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 다시 로그인해주세요.")
                 st.session_state.current_page = 'login'
                 st.session_state.username = ''
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("비밀번호 변경에 실패했습니다.")
         else:
@@ -593,7 +593,7 @@ def show_create_chatbot_page():
                 else:
                     st.session_state.current_chatbot = len(st.session_state.user['chatbots']) - 1
                     st.session_state.current_page = 'chatbot'
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
         else:
@@ -606,7 +606,7 @@ def show_create_chatbot_page():
             # 새로 생성된 챗봇으로 이동
             st.session_state.current_chatbot = len(st.session_state.user['chatbots']) - 1
             st.session_state.current_page = 'chatbot'
-            st.experimental_rerun()
+            st.rerun()
 
 # 챗봇 수정 페이지
 def show_edit_chatbot_page():
@@ -655,7 +655,7 @@ def show_edit_chatbot_page():
                 st.session_state.current_chatbot = st.session_state.editing_chatbot
                 st.session_state.pop('editing_chatbot', None)
                 st.session_state.current_page = 'chatbot'
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"챗봇 수정 중 오류가 발생했습니다: {str(e)}")
         else:
@@ -664,7 +664,7 @@ def show_edit_chatbot_page():
             st.session_state.current_chatbot = st.session_state.editing_chatbot
             st.session_state.pop('editing_chatbot', None)
             st.session_state.current_page = 'chatbot'
-            st.experimental_rerun()
+            st.rerun()
 
 # 대화 내역 저장 함수 (공개 챗봇용)
 def save_public_chat_history(chatbot_id, user_name, messages):
@@ -726,19 +726,19 @@ def show_available_chatbots_page():
                 if st.button("사용하기", key=f"use_{i}"):
                     st.session_state.current_chatbot = i
                     st.session_state.current_page = 'chatbot'
-                    st.experimental_rerun()
+                    st.rerun()
             with col2:
                 if st.session_state.user["username"] == 'admin' or chatbot.get('creator', '') == st.session_state.user["username"]:
                     if st.button("수정하기", key=f"edit_{i}"):
                         st.session_state.editing_chatbot = i
                         st.session_state.current_page = 'edit_chatbot'
-                        st.experimental_rerun()
+                        st.rerun()
             with col3:
                 if st.session_state.user["username"] == 'admin' or chatbot.get('creator', '') == st.session_state.user["username"]:
                     if st.button("삭제하기", key=f"delete_{i}"):
                         if delete_chatbot(chatbot.get('_id'), chatbot.get('creator', '')):
                             st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
-                            st.experimental_rerun()
+                            st.rerun()
             # URL 생성 버튼 추가
             with st.expander("URL 생성", expanded=False):
                 selected_model = st.selectbox("모델 선택", MODEL_OPTIONS, key=f"model_select_{i}")
@@ -769,7 +769,7 @@ def show_available_chatbots_page():
                 if st.button("URL 사용자 대화내역 보기", key=f"view_url_history_{i}"):
                     st.session_state.viewing_chatbot_history = str(chatbot['_id'])
                     st.session_state.current_page = 'view_public_chat_history'
-                    st.experimental_rerun()
+                    st.rerun()
 
 # 챗봇 삭제 함수 수정
 def delete_chatbot(chatbot_id, creator):
@@ -832,19 +832,19 @@ def show_shared_chatbots_page():
                         if st.button("사용하기", key=f"use_shared_{category}_{i}"):
                             st.session_state.current_shared_chatbot = chatbot
                             st.session_state.current_page = 'shared_chatbot'
-                            st.experimental_rerun()
+                            st.rerun()
                     with col2:
                         if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
                             if st.button("수정하기", key=f"edit_shared_{category}_{i}"):
                                 st.session_state.editing_shared_chatbot = chatbot
                                 st.session_state.current_page = 'edit_shared_chatbot'
-                                st.experimental_rerun()
+                                st.rerun()
                     with col3:
                         if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
                             if st.button("삭제하기", key=f"delete_shared_{category}_{i}"):
                                 if delete_shared_chatbot(chatbot['_id']):
                                     st.success(f"'{chatbot['name']}' 공유 챗봇이 삭제되었습니다.")
-                                    st.experimental_rerun()
+                                    st.rerun()
     else:
         st.write("데이터베이스 연결이 없어 공유 챗봇을 불러올 수 없습니다.")
 
@@ -927,7 +927,7 @@ def show_edit_shared_chatbot_page():
                 st.session_state.current_shared_chatbot = chatbot
                 st.session_state.pop('editing_shared_chatbot', None)
                 st.session_state.current_page = 'shared_chatbot'
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"공유 챗봇 수정 중 오류가 발생했습니다: {str(e)}")
         else:
@@ -961,7 +961,7 @@ def show_chatbot_page():
         if st.button("수정", key="edit_button"):
             st.session_state.editing_chatbot = st.session_state.current_chatbot
             st.session_state.current_page = 'edit_chatbot'
-            st.experimental_rerun()
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
@@ -1084,7 +1084,7 @@ def show_shared_chatbot_page():
         if st.button("수정", key="edit_button"):
             st.session_state.editing_shared_chatbot = chatbot
             st.session_state.current_page = 'edit_shared_chatbot'
-            st.experimental_rerun()
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
@@ -1196,7 +1196,7 @@ def show_public_chatbot_page(chatbot_id):
         start_button_clicked = st.button("챗봇 시작하기")
         if name and start_button_clicked:
             st.session_state.user_name = name
-            # st.experimental_rerun()을 제거하고 세션 상태에 따라 진행
+            # st.rerun()을 제거하고 세션 상태에 따라 진행
     if 'user_name' in st.session_state:
         # 대화 시작
         start_chatting(chatbot, st.session_state.user_name, selected_model)
@@ -1450,11 +1450,11 @@ def main_app():
             if page == 'logout':
                 st.session_state.user = None
                 st.session_state.current_page = 'login'
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.session_state.current_page = page
 
-            st.experimental_rerun()  # 페이지 갱신
+            st.rerun()  # 페이지 갱신
 
     # 현재 페이지에 따라 적절한 내용 표시
     if st.session_state.current_page == 'home':
