@@ -478,9 +478,6 @@ def show_home_page():
     if st.sidebar.button("현재 대화내역 초기화", key="reset_chat", help="현재 대화 내역을 초기화합니다.", use_container_width=True):
         st.session_state.home_messages = []
 
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
-
 # 새 챗봇 만들기 페이지
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
@@ -561,9 +558,6 @@ def show_create_chatbot_page():
             st.session_state.current_page = 'chatbot'
             st.rerun()
 
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
-
 # 챗봇 수정 페이지
 def show_edit_chatbot_page():
     st.title("챗봇 수정")
@@ -621,9 +615,6 @@ def show_edit_chatbot_page():
             st.session_state.pop('editing_chatbot', None)
             st.session_state.current_page = 'chatbot'
             st.rerun()
-
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
 
 # 대화 내역 저장 함수 (공개 챗봇용)
 def save_public_chat_history(chatbot_id, user_name, messages):
@@ -699,10 +690,14 @@ def show_available_chatbots_page():
                             st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
                             st.rerun()
             # URL 생성 버튼 추가
-            if st.button("URL 생성", key=f"generate_url_{i}"):
-                chatbot_id = str(chatbot.get('_id', i))
-                shareable_url = f"{base_url}?chatbot_id={chatbot_id}"
-                st.write(f"공유 가능한 URL: {shareable_url}")
+            with st.expander("URL 생성", expanded=False):
+                selected_model = st.selectbox("모델 선택", MODEL_OPTIONS, key=f"model_select_{i}")
+                if st.button("URL 생성", key=f"generate_url_{i}"):
+                    chatbot_id = str(chatbot.get('_id', i))
+                    # 모델 이름을 URL 인코딩
+                    model_param = urllib.parse.quote(selected_model)
+                    shareable_url = f"{base_url}?chatbot_id={chatbot_id}&model={model_param}"
+                    st.write(f"공유 가능한 URL: {shareable_url}")
 
             # 챗봇 제작자만 볼 수 있는 'URL 사용자 대화내역 보기' 버튼 추가
             if chatbot.get('creator', '') == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
@@ -710,9 +705,6 @@ def show_available_chatbots_page():
                     st.session_state.viewing_chatbot_history = str(chatbot['_id'])
                     st.session_state.current_page = 'view_public_chat_history'
                     st.rerun()
-
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
 
 # 챗봇 삭제 함수 수정
 def delete_chatbot(chatbot_id, creator):
@@ -850,9 +842,6 @@ def show_edit_shared_chatbot_page():
         else:
             st.error("데이터베이스 연결이 없어 공유 챗봇을 수정할 수 없습니다.")
 
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
-
 # 특정 챗봇 페이지
 def show_chatbot_page():
     if db is not None and st.session_state.user["username"] == 'admin':
@@ -977,9 +966,6 @@ def show_chatbot_page():
         else:
             st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
-
 # 공유 챗봇 대화 페이지
 def show_shared_chatbot_page():
     if 'current_shared_chatbot' not in st.session_state:
@@ -1076,39 +1062,38 @@ def show_shared_chatbot_page():
                 if full_response:
                     chatbot['messages'].append({"role": "assistant", "content": full_response})
 
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
-
 # 비로그인 사용자용 챗봇 페이지 함수 수정
 def show_public_chatbot_page(chatbot_id):
     st.title("챗봇 이용하기")
-    name = st.text_input("이름을 입력하세요")
     if 'user_name' not in st.session_state:
-        st.session_state.user_name = None
+        name = st.text_input("이름을 입력하세요")
+        if st.button("챗봇 시작하기"):
+            if name:
+                st.session_state.user_name = name
+    else:
+        # 챗봇 불러오기
+        chatbot = None
+        if db is not None:
+            user = db.users.find_one({"chatbots._id": ObjectId(chatbot_id)}, {"chatbots.$": 1})
+            if user:
+                chatbot = user['chatbots'][0]
+        else:
+            st.error("데이터베이스 연결이 필요합니다.")
+            return
 
-    if st.button("챗봇 시작하기") or st.session_state.user_name:
-        if name:
-            st.session_state.user_name = name
-        if st.session_state.user_name:
-            # 챗봇 불러오기
-            chatbot = None
-            if db is not None:
-                user = db.users.find_one({"chatbots._id": ObjectId(chatbot_id)}, {"chatbots.$": 1})
-                if user:
-                    chatbot = user['chatbots'][0]
-            else:
-                st.error("데이터베이스 연결이 필요합니다.")
-                return
+        if not chatbot:
+            st.error("챗봇을 찾을 수 없습니다.")
+            return
 
-            if not chatbot:
-                st.error("챗봇을 찾을 수 없습니다.")
-                return
+        # URL에서 모델 파라미터 가져오기
+        query_params = st.experimental_get_query_params()
+        selected_model = query_params.get('model', ['gpt-4o'])[0]
 
-            # 대화 시작
-            start_chatting(chatbot, st.session_state.user_name)
+        # 대화 시작
+        start_chatting(chatbot, st.session_state.user_name, selected_model)
 
 # 대화 시작 함수 수정
-def start_chatting(chatbot, user_name):
+def start_chatting(chatbot, user_name, selected_model):
     if 'public_chatbot_messages' not in st.session_state:
         st.session_state.public_chatbot_messages = [{"role": "assistant", "content": chatbot.get('welcome_message', "안녕하세요! 무엇을 도와드릴까요?")}]
 
@@ -1139,7 +1124,6 @@ def start_chatting(chatbot, user_name):
                         full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
             else:
                 try:
-                    selected_model = "gpt-4o"  # 기본 모델 설정 또는 필요에 따라 수정
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
@@ -1229,9 +1213,6 @@ def show_chat_history_page():
     else:
         st.warning("로그인이 필요합니다.")
 
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
-
 # 특정 대화 내역 삭제 함수
 def delete_specific_chat_history(history_id):
     if db is not None:
@@ -1275,18 +1256,26 @@ def show_public_chatbot_history():
             chat_histories = db.public_chat_history.find({
                 "chatbot_id": chatbot_id,
                 "user_name": selected_user
-            }).sort("timestamp", -1)
+            }).sort("timestamp", 1)  # 오름차순 정렬
+
+            all_messages = []
+            first_timestamp = None
 
             for history in chat_histories:
-                st.write(f"대화 시간: {history['timestamp']}")
-                for message in history['messages']:
-                    st.write(f"{message['role']}: {message['content']}")
-                st.write("---")
+                if first_timestamp is None:
+                    first_timestamp = history['timestamp']
+                all_messages.extend(history['messages'])
+
+            if first_timestamp:
+                st.write(f"대화 시작 시간: {first_timestamp}")
+            else:
+                st.write("대화 내역이 없습니다.")
+
+            for message in all_messages:
+                st.write(f"{message['role']}: {message['content']}")
+            st.write("---")
     else:
         st.warning("데이터베이스 연결이 없어 대화 내역을 불러올 수 없습니다.")
-
-    # 사이드바 맨 아래에 작은 글씨 추가
-    add_sidebar_footer()
 
 # 사이드바 맨 아래에 작은 글씨 추가하는 함수
 def add_sidebar_footer():
