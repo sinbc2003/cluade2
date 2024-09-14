@@ -127,7 +127,15 @@ except Exception as e:
 # Google Sheets API 설정
 try:
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    service_account_info = st.secrets["gcp_service_account"]
+
+    # Fix the private key formatting
+    if 'private_key' in service_account_info:
+        private_key = service_account_info['private_key']
+        private_key = private_key.replace('\\n', '\n')
+        service_account_info['private_key'] = private_key
+
+    creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
     client = gspread.authorize(creds)
 
     # 스프레드시트 열기
