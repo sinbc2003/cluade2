@@ -280,6 +280,7 @@ def show_home_page():
         st.rerun()
 
 # 새 챗봇 만들기 페이지
+# 새 챗봇 만들기 페이지
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
     chatbot_name = st.text_input("챗봇 이름")
@@ -288,6 +289,8 @@ def show_create_chatbot_page():
     welcome_message = st.text_input("웰컴 메시지", value="안녕하세요! 무엇을 도와드릴까요?")
     is_shared = st.checkbox("다른 교사와 공유하기")
     background_color = st.color_picker("챗봇 카드 배경색 선택", "#FFFFFF")
+    
+    profile_image_url = "https://via.placeholder.com/60"  # 기본 이미지 URL 설정
     
     col1, col2 = st.columns(2)
     with col1:
@@ -301,7 +304,7 @@ def show_create_chatbot_page():
                 "creator": st.session_state.user["username"],
                 "is_shared": is_shared,
                 "background_color": background_color,
-                "profile_image_url": "https://via.placeholder.com/60"  # 기본 이미지 URL 설정
+                "profile_image_url": profile_image_url
             }
             if db is not None:
                 try:
@@ -325,19 +328,15 @@ def show_create_chatbot_page():
     with col2:
         if st.button("프로필 이미지 생성"):
             profile_image_prompt = f"Create a profile image for a chatbot named '{chatbot_name}'. Description: {chatbot_description}"
-            profile_image_url = generate_image(profile_image_prompt)
-            if profile_image_url:
-                st.image(profile_image_url, caption="생성된 프로필 이미지", width=200)
-                new_chatbot["profile_image_url"] = profile_image_url
-                # 데이터베이스 업데이트
-                if db is not None:
-                    try:
-                        db.users.update_one(
-                            {"_id": st.session_state.user["_id"], "chatbots.name": chatbot_name},
-                            {"$set": {"chatbots.$.profile_image_url": profile_image_url}}
-                        )
-                    except Exception as e:
-                        st.error(f"프로필 이미지 업데이트 중 오류가 발생했습니다: {str(e)}")
+            generated_image_url = generate_image(profile_image_prompt)
+            if generated_image_url:
+                st.image(generated_image_url, caption="생성된 프로필 이미지", width=200)
+                profile_image_url = generated_image_url
+                st.success("프로필 이미지가 생성되었습니다. 챗봇 생성 시 이 이미지가 사용됩니다.")
+            else:
+                st.error("프로필 이미지 생성에 실패했습니다. 기본 이미지가 사용됩니다.")
+
+    st.markdown("**참고:** 프로필 이미지를 생성한 후 챗봇을 생성하세요. 생성된 이미지가 챗봇의 프로필 이미지로 사용됩니다.")
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
