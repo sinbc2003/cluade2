@@ -41,19 +41,19 @@ st.markdown("""
         box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
         display: flex;
         align-items: start;
-        height: 200px;  /* 고정 높이 설정 */
-        overflow: hidden;  /* 내용이 넘치면 숨김 */
+        height: 160px;  /* 기존 높이의 80% */
+        overflow: hidden;
     }
     .chatbot-card img {
-        width: 60px;
-        height: 60px;
+        width: 100px;
+        height: 100px;
         border-radius: 50%;
         object-fit: cover;
-        margin-left: 20px;
+        margin-right: 20px;
     }
     .chatbot-info {
         flex-grow: 1;
-        overflow: hidden;  /* 내용이 넘치면 숨김 */
+        overflow: hidden;
     }
     .chatbot-name {
         font-size: 18px;
@@ -65,7 +65,7 @@ st.markdown("""
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
-        -webkit-line-clamp: 3;  /* 최대 3줄까지 표시 */
+        -webkit-line-clamp: 2;  /* 최대 2줄까지 표시 */
         -webkit-box-orient: vertical;
     }
 </style>
@@ -349,24 +349,32 @@ def show_available_chatbots_page():
         with cols[i % 3]:
             st.markdown(f"""
             <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
+                <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/100')}" alt="프로필 이미지">
                 <div class="chatbot-info">
                     <div class="chatbot-name">{chatbot['name']}</div>
                     <div class="chatbot-description">{chatbot['description']}</div>
                 </div>
-                <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지" style="width:60px;height:60px;object-fit:cover;">
             </div>
             """, unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 if st.button("사용하기", key=f"use_{i}"):
                     st.session_state.current_chatbot = i
                     st.session_state.current_page = 'chatbot'
                     st.rerun()
             with col2:
+                if st.button("수정하기", key=f"edit_{i}"):
+                    st.session_state.editing_chatbot = i
+                    st.rerun()
+            with col3:
                 if st.button("삭제하기", key=f"delete_{i}"):
                     if delete_chatbot(i):
                         st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
                         st.rerun()
+    
+    if 'editing_chatbot' in st.session_state:
+        edit_chatbot(st.session_state.user["chatbots"][st.session_state.editing_chatbot], st.session_state.editing_chatbot)
+
 # 챗봇 삭제 함수
 def delete_chatbot(index):
     if db is not None:
@@ -397,12 +405,12 @@ def show_shared_chatbots_page():
             with cols[i % 3]:
                 st.markdown(f"""
                 <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
+                    <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/100')}" alt="프로필 이미지">
                     <div class="chatbot-info">
                         <div class="chatbot-name">{chatbot['name']}</div>
                         <div class="chatbot-description">{chatbot['description']}</div>
                         <p>작성자: {chatbot['creator']}</p>
                     </div>
-                    <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지" style="width:60px;height:60px;object-fit:cover;">
                 </div>
                 """, unsafe_allow_html=True)
                 col1, col2 = st.columns(2)
@@ -436,6 +444,44 @@ def delete_shared_chatbot(chatbot_id):
     else:
         st.error("데이터베이스 연결이 없어 공유 챗봇을 삭제할 수 없습니다.")
         return False
+
+# 챗봇 수정 함수
+def edit_chatbot(chatbot, index):
+    st.subheader(f"{chatbot['name']} 수정")
+    new_name = st.text_input("챗봇 이름", value=chatbot['name'])
+    new_description = st.text_input("챗봇 소개", value=chatbot['description'])
+    new_system_prompt = st.text_area("시스템 프롬프트", value=chatbot['system_prompt'], height=200)
+    new_welcome_message = st.text_input("웰컴 메시지", value=chatbot['welcome_message'])
+    new_background_color = st.color_picker("챗봇 카드 배경색 선택", value=chatbot.get('background_color', '#FFFFFF'))
+
+    if st.button("프로필 이미지 재생성"):
+        profile_image_prompt = f"Create a profile image for a chatbot named '{new_name}'. Description: {new_description}"
+        new_profile_image_url = generate_image(profile_image_prompt)
+        if new_profile_image_url:
+            st.image(new_profile_image_url, caption="새로 생성된 프로필 이미지", width=200)
+            chatbot['profile_image_url'] = new_profile_image_url
+
+    if st.button("변경 사항 저장"):
+        chatbot['name'] = new_name
+        chatbot['description'] = new_description
+        chatbot['system_prompt'] = new_system_prompt
+        chatbot['welcome_message'] = new_welcome_message
+        chatbot['background_color'] = new_background_color
+
+        if db is not None:
+            try:
+                db.users.update_one(
+                    {"_id": st.session_state.user["_id"]},
+                    {"$set": {f"chatbots.{index}": chatbot}}
+                )
+                st.success("챗봇이 성공적으로 수정되었습니다.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"챗봇 수정 중 오류가 발생했습니다: {str(e)}")
+        else:
+            st.session_state.user['chatbots'][index] = chatbot
+            st.success("챗봇이 성공적으로 수정되었습니다. (오프라인 모드)")
+            st.rerun()
 
 # 특정 챗봇 페이지
 def show_chatbot_page():
