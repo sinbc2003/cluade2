@@ -473,7 +473,11 @@ def show_home_page():
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
-                            messages=[{"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다."}] + st.session_state.home_messages,
+                            messages=[{"role": "system", "content": """역할 : 당신의 역할은 {}이다.
+                            규칙 : 다음 규칙을 따라 사용자에게 답변한다.
+                            - {내용1}
+                            - {내용2}
+                            - {내용3}"""}] + st.session_state.home_messages,
                             stream=True
                         )
                         for chunk in response:
