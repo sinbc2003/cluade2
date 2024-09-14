@@ -13,6 +13,7 @@ from google.oauth2.service_account import Credentials
 import gspread
 from google.auth.exceptions import GoogleAuthError
 import traceback
+import pandas as pd
 
 # 전역 변수로 db 선언
 db = None
@@ -173,7 +174,9 @@ MODEL_OPTIONS = [
     "gpt-4o-mini",
     "gemini-pro",
     "gemini-1.5-pro-latest",
-    "claude-3-opus-20240229"
+    "claude-3-5-sonnet-20240620",
+    "claude-3-opus-20240229",
+    "claude-3-haiku-20240307"
 ]
 
 # 이미지 생성 관련 키워드와 패턴
@@ -403,8 +406,24 @@ def delete_old_chat_history():
         try:
             one_month_ago = datetime.now() - timedelta(days=30)
             db.chat_history.delete_many({"timestamp": {"$lt": one_month_ago}})
+            db.public_chat_history.delete_many({"timestamp": {"$lt": one_month_ago}})
+            db.usage_logs.delete_many({"timestamp": {"$lt": one_month_ago}})
         except Exception as e:
             st.error(f"오래된 대화 내역 삭제 중 오류가 발생했습니다: {str(e)}")
+
+# 사용량 기록 함수 추가
+def record_usage(username, model_name, timestamp, tokens_used=None):
+    if db is not None:
+        try:
+            usage_entry = {
+                "username": username,
+                "model_name": model_name,
+                "timestamp": timestamp,
+                "tokens_used": tokens_used
+            }
+            db.usage_logs.insert_one(usage_entry)
+        except Exception as e:
+            st.error(f"사용량 기록 중 오류가 발생했습니다: {str(e)}")
 
 # 홈 페이지 (기본 챗봇)
 def show_home_page():
@@ -441,6 +460,7 @@ def show_home_page():
                         full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
             else:
                 try:
+                    start_time = datetime.now()
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
@@ -451,6 +471,8 @@ def show_home_page():
                             if chunk.choices[0].delta.content is not None:
                                 full_response += chunk.choices[0].delta.content
                                 message_placeholder.markdown(full_response + "▌")
+                        # 사용량 기록
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                     elif "gemini" in selected_model:
                         model = genai.GenerativeModel(selected_model)
                         response = model.generate_content(prompt, stream=True)
@@ -458,6 +480,7 @@ def show_home_page():
                             if chunk.text:
                                 full_response += chunk.text
                                 message_placeholder.markdown(full_response + "▌")
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                     elif "claude" in selected_model:
                         with anthropic_client.messages.stream(
                             max_tokens=1000,
@@ -469,6 +492,7 @@ def show_home_page():
                                 full_response += text
                                 message_placeholder.markdown(full_response + "▌")
                         message_placeholder.markdown(full_response)
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                 except Exception as e:
                     st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
 
@@ -919,6 +943,7 @@ def show_chatbot_page():
                         full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
             else:
                 try:
+                    start_time = datetime.now()
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
@@ -929,6 +954,8 @@ def show_chatbot_page():
                             if chunk.choices[0].delta.content is not None:
                                 full_response += chunk.choices[0].delta.content
                                 message_placeholder.markdown(full_response + "▌")
+                        # 사용량 기록
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                     elif "gemini" in selected_model:
                         model = genai.GenerativeModel(selected_model)
                         response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
@@ -936,6 +963,7 @@ def show_chatbot_page():
                             if chunk.text:
                                 full_response += chunk.text
                                 message_placeholder.markdown(full_response + "▌")
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                     elif "claude" in selected_model:
                         with anthropic_client.messages.stream(
                             max_tokens=1000,
@@ -948,6 +976,7 @@ def show_chatbot_page():
                                 message_placeholder.markdown(full_response + "▌")
 
                         message_placeholder.markdown(full_response)
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                 except Exception as e:
                     st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
 
@@ -1027,6 +1056,7 @@ def show_shared_chatbot_page():
                         full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
             else:
                 try:
+                    start_time = datetime.now()
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
@@ -1037,6 +1067,8 @@ def show_shared_chatbot_page():
                             if chunk.choices[0].delta.content is not None:
                                 full_response += chunk.choices[0].delta.content
                                 message_placeholder.markdown(full_response + "▌")
+                        # 사용량 기록
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                     elif "gemini" in selected_model:
                         model = genai.GenerativeModel(selected_model)
                         response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
@@ -1044,6 +1076,7 @@ def show_shared_chatbot_page():
                             if chunk.text:
                                 full_response += chunk.text
                                 message_placeholder.markdown(full_response + "▌")
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                     elif "claude" in selected_model:
                         with anthropic_client.messages.stream(
                             max_tokens=1000,
@@ -1056,6 +1089,7 @@ def show_shared_chatbot_page():
                                 message_placeholder.markdown(full_response + "▌")
 
                         message_placeholder.markdown(full_response)
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                 except Exception as e:
                     st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
 
@@ -1070,6 +1104,7 @@ def show_public_chatbot_page(chatbot_id):
         if st.button("챗봇 시작하기"):
             if name:
                 st.session_state.user_name = name
+                st.experimental_rerun()
     else:
         # 챗봇 불러오기
         chatbot = None
@@ -1124,6 +1159,7 @@ def start_chatting(chatbot, user_name, selected_model):
                         full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
             else:
                 try:
+                    start_time = datetime.now()
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
@@ -1134,6 +1170,8 @@ def start_chatting(chatbot, user_name, selected_model):
                             if chunk.choices[0].delta.content is not None:
                                 full_response += chunk.choices[0].delta.content
                                 message_placeholder.markdown(full_response + "▌")
+                        # 사용량 기록
+                        record_usage(user_name, selected_model, start_time)
                     elif "gemini" in selected_model:
                         model = genai.GenerativeModel(selected_model)
                         response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
@@ -1141,6 +1179,7 @@ def start_chatting(chatbot, user_name, selected_model):
                             if chunk.text:
                                 full_response += chunk.text
                                 message_placeholder.markdown(full_response + "▌")
+                        record_usage(user_name, selected_model, start_time)
                     elif "claude" in selected_model:
                         with anthropic_client.messages.stream(
                             max_tokens=1000,
@@ -1151,6 +1190,7 @@ def start_chatting(chatbot, user_name, selected_model):
                             for text in stream.text_stream:
                                 full_response += text
                                 message_placeholder.markdown(full_response + "▌")
+                        record_usage(user_name, selected_model, start_time)
                 except Exception as e:
                     st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
 
@@ -1277,12 +1317,41 @@ def show_public_chatbot_history():
     else:
         st.warning("데이터베이스 연결이 없어 대화 내역을 불러올 수 없습니다.")
 
-# 사이드바 맨 아래에 작은 글씨 추가하는 함수
-def add_sidebar_footer():
-    st.sidebar.markdown("""
-    ---
-    <small>제작 : 수원외고 교사 신병철(sinbc2004@naver.com)</small>
-    """, unsafe_allow_html=True)
+# 사용량 데이터 페이지 추가
+def show_usage_data_page():
+    st.title("AI 모델 사용량 데이터")
+
+    if db is not None:
+        usage_logs = list(db.usage_logs.find())
+
+        if not usage_logs:
+            st.info("사용량 데이터가 없습니다.")
+            return
+
+        df = pd.DataFrame(usage_logs)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['date'] = df['timestamp'].dt.date
+
+        # 필터링 및 정렬 기능 추가
+        usernames = df['username'].unique()
+        selected_user = st.multiselect("사용자 선택", usernames, default=usernames)
+        models = df['model_name'].unique()
+        selected_model = st.multiselect("모델 선택", models, default=models)
+        date_range = st.date_input("날짜 범위 선택", [])
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+        df_filtered = df[(df['username'].isin(selected_user)) & (df['model_name'].isin(selected_model))]
+
+        # 데이터 표시
+        st.dataframe(df_filtered[['username', 'model_name', 'timestamp', 'tokens_used']])
+
+        # 사용자별 모델 사용 횟수 집계
+        usage_summary = df_filtered.groupby(['username', 'model_name']).size().reset_index(name='사용 횟수')
+        st.write("사용자별 모델 사용 횟수:")
+        st.dataframe(usage_summary)
+    else:
+        st.warning("데이터베이스 연결이 없어 사용량 데이터를 불러올 수 없습니다.")
 
 # 메인 애플리케이션
 def main_app():
@@ -1294,8 +1363,13 @@ def main_app():
         ("나만 사용 가능한 챗봇", 'available_chatbots'),
         ("수원외국어고등학교 공유 챗봇", 'shared_chatbots'),
         ("대화 내역 확인", 'chat_history'),
-        ("로그아웃", 'logout')
     ]
+
+    # 관리자일 경우 사용량 데이터 메뉴 추가
+    if st.session_state.user["username"] == 'admin':
+        menu_items.append(("사용량 데이터", 'usage_data'))
+
+    menu_items.append(("로그아웃", 'logout'))
 
     for label, page in menu_items:
         if st.sidebar.button(label, key=f"menu_{page}", use_container_width=True):
@@ -1335,6 +1409,8 @@ def main_app():
         show_change_password_page()
     elif st.session_state.current_page == 'view_public_chat_history':
         show_public_chatbot_history()
+    elif st.session_state.current_page == 'usage_data':
+        show_usage_data_page()
     else:
         st.session_state.current_page = 'home'
         show_home_page()
@@ -1344,6 +1420,13 @@ def main_app():
 
     # 사이드바 맨 아래에 작은 글씨 추가
     add_sidebar_footer()
+
+# 사이드바 맨 아래에 작은 글씨 추가하는 함수
+def add_sidebar_footer():
+    st.sidebar.markdown("""
+    ---
+    <small>제작 : 수원외고 교사 신병철(sinbc2004@naver.com)</small>
+    """, unsafe_allow_html=True)
 
 # 메인 실행 부분
 def main():
