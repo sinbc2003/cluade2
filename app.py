@@ -473,11 +473,7 @@ def show_home_page():
                     if "gpt" in selected_model:
                         response = openai_client.chat.completions.create(
                             model=selected_model,
-                            messages=[{"role": "system", "content": """역할 : 당신의 역할은 {}이다.
-                            규칙 : 다음 규칙을 따라 사용자에게 답변한다.
-                            - {내용1}
-                            - {내용2}
-                            - {내용3}"""}] + st.session_state.home_messages,
+                            messages=[{"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다."}] + st.session_state.home_messages,
                             stream=True
                         )
                         for chunk in response:
@@ -520,7 +516,12 @@ def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
     chatbot_name = st.text_input("챗봇 이름")
     chatbot_description = st.text_input("챗봇 소개")
-    system_prompt = st.text_area("시스템 프롬프트", value="당신은 도움이 되는 AI 어시스턴트입니다.", height=300)
+    system_prompt = st.text_area("시스템 프롬프트", value=
+"""역할 : 당신의 역할은 {}이다.
+  규칙 : 다음 규칙을 따라 사용자에게 답변한다.
+- {내용1}
+- {내용2}
+- {내용3}""", height=300)
     welcome_message = st.text_input("웰컴 메시지", value="안녕하세요! 무엇을 도와드릴까요?")
     is_shared = st.checkbox("다른 교사와 공유하기")
     background_color = st.color_picker("챗봇 카드 배경색 선택", "#FFFFFF")
