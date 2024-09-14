@@ -9,8 +9,8 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 import urllib.parse
 from datetime import datetime, timedelta
-import gspread
 from google.oauth2.service_account import Credentials
+import gspread
 
 # 전역 변수로 db 선언
 db = None
@@ -105,14 +105,6 @@ except Exception as e:
 # Google Apps Script 웹 앱 URL
 GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
 
-# Google Sheets API 설정
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-creds = Credentials.from_service_account_file('path/to/your/service_account.json', scopes=scope)
-client = gspread.authorize(creds)
-
-# 스프레드시트 열기
-sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0").sheet1
-
 # API 키 가져오기
 ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
@@ -130,6 +122,14 @@ try:
 except Exception as e:
     st.error("API 클라이언트 초기화에 실패했습니다. 관리자에게 문의해주세요.")
     st.stop()
+
+# Google Sheets API 설정
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+client = gspread.authorize(creds)
+
+# 스프레드시트 열기
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0").sheet1
 
 # 모델 선택 드롭다운
 MODEL_OPTIONS = [
@@ -171,21 +171,6 @@ def generate_image(prompt):
         st.error("이미지 생성에 실패했습니다. 다시 시도해주세요.")
         return None
 
-# 비밀번호 변경 함수
-def change_password(username, new_password):
-    try:
-        # 사용자 찾기
-        cell = sheet.find(username)
-        if cell:
-            # 비밀번호 업데이트
-            sheet.update_cell(cell.row, 2, new_password)
-            return True
-        else:
-            return False
-    except Exception as e:
-        st.error(f"비밀번호 변경 중 오류가 발생했습니다: {str(e)}")
-        return False
-
 # 로그인 함수
 def login(username, password):
     try:
@@ -200,6 +185,21 @@ def login(username, password):
     except Exception as e:
         st.error(f"로그인 중 오류가 발생했습니다: {str(e)}")
     return None
+
+# 비밀번호 변경 함수
+def change_password(username, new_password):
+    try:
+        # 사용자 찾기
+        cell = sheet.find(username)
+        if cell:
+            # 비밀번호 업데이트
+            sheet.update_cell(cell.row, 2, new_password)
+            return True
+        else:
+            return False
+    except Exception as e:
+        st.error(f"비밀번호 변경 중 오류가 발생했습니다: {str(e)}")
+        return False
 
 # 로그인 페이지
 def show_login_page():
@@ -315,7 +315,6 @@ def show_home_page():
                             for text in stream.text_stream:
                                 full_response += text
                                 message_placeholder.markdown(full_response + "▌")
-                    
                     message_placeholder.markdown(full_response)
                 except Exception as e:
                     st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
