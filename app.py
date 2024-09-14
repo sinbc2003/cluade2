@@ -208,8 +208,6 @@ def show_login_page():
 
 # 홈 페이지 (기본 챗봇)
 def show_home_page():
-    st.set_page_config(layout="wide")
-    
     col1, col2 = st.columns([3, 1])
     with col1:
         st.title("기본 챗봇")
@@ -243,6 +241,7 @@ def show_home_page():
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
+
 
             if is_image_request(prompt):
                 message_placeholder.markdown("이미지를 생성하겠습니다. 잠시만 기다려 주세요.")
@@ -292,9 +291,10 @@ def show_home_page():
                     st.session_state.home_messages.append({"role": "assistant", "content": full_response})
 
     # 초기화 버튼을 채팅 입력 필드 아래에 배치
-    if st.button("대화 초기화", key="reset_home", help="대화 내역을 초기화합니다."):
+   if st.button("대화 초기화", key="reset_home", help="대화 내역을 초기화합니다."):
         st.session_state.home_messages = [{"role": "assistant", "content": "안녕하세요! 어떤 도움이 필요하신가요?"}]
         st.rerun()
+       
 # 새 챗봇 만들기 페이지
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
