@@ -543,6 +543,13 @@ def show_available_chatbots_page():
         st.info("아직 만든 챗봇이 없습니다. '새 챗봇 만들기'에서 첫 번째 챗봇을 만들어보세요!")
         return
 
+    # st.secrets에서 BASE_URL 가져오기
+    try:
+        base_url = st.secrets["BASE_URL"]
+    except KeyError:
+        st.error("BASE_URL이 설정되지 않았습니다. Streamlit secrets에 BASE_URL을 추가해주세요.")
+        return
+
     cols = st.columns(3)
     for i, chatbot in enumerate(st.session_state.user["chatbots"]):
         with cols[i % 3]:
@@ -571,12 +578,11 @@ def show_available_chatbots_page():
                     if delete_chatbot(i):
                         st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
                         st.rerun()
-                # URL 생성 버튼 추가
-                if st.button("URL 생성", key=f"generate_url_{i}"):
-                    chatbot_id = str(chatbot.get('_id', i))
-                    base_url = st.request.host_url
-                    shareable_url = f"{base_url}?chatbot_id={chatbot_id}"
-                    st.write(f"공유 가능한 URL: {shareable_url}")
+            # URL 생성 버튼 추가
+            if st.button("URL 생성", key=f"generate_url_{i}"):
+                chatbot_id = str(chatbot.get('_id', i))
+                shareable_url = f"{base_url}?chatbot_id={chatbot_id}"
+                st.write(f"공유 가능한 URL: {shareable_url}")
 
 # 챗봇 삭제 함수
 def delete_chatbot(index):
