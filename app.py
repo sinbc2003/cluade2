@@ -8,6 +8,7 @@ import requests
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 import urllib.parse
+from datetime import datetime, timedelta
 
 # 전역 변수로 db 선언
 db = None
@@ -158,6 +159,29 @@ def show_login_page():
             else:
                 st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
+# 대화 내역 저장 함수
+def save_chat_history(chatbot_name, messages):
+    if db is not None:
+        try:
+            chat_history = {
+                "chatbot_name": chatbot_name,
+                "user": st.session_state.user["username"],
+                "timestamp": datetime.now(),
+                "messages": messages
+            }
+            db.chat_history.insert_one(chat_history)
+        except Exception as e:
+            st.error(f"대화 내역 저장 중 오류가 발생했습니다: {str(e)}")
+
+# 오래된 대화 내역 삭제 함수
+def delete_old_chat_history():
+    if db is not None:
+        try:
+            one_month_ago = datetime.now() - timedelta(days=30)
+            db.chat_history.delete_many({"timestamp": {"$lt": one_month_ago}})
+        except Exception as e:
+            st.error(f"오래된 대화 내역 삭제 중 오류가 발생했습니다: {str(e)}")
+
 # 홈 페이지 (기본 챗봇)
 def show_home_page():
     st.title("기본 챗봇")
@@ -292,10 +316,37 @@ def show_available_chatbots_page():
                 <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" alt="프로필 이미지">
             </div>
             """, unsafe_allow_html=True)
-            if st.button(f"사용하기 #{i}"):
-                st.session_state.current_chatbot = i
-                st.session_state.current_page = 'chatbot'
-                st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"사용하기 #{i}"):
+                    st.session_state.current_chatbot = i
+                    st.session_state.current_page = 'chatbot'
+                    st.rerun()
+            with col2:
+                if st.button(f"삭제하기 #{i}"):
+                    if delete_chatbot(i):
+                        st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
+                        st.rerun()
+
+# 챗봇 삭제 함수
+def delete_chatbot(index):
+    if db is not None:
+        try:
+            chatbot = st.session_state.user["chatbots"][index]
+            db.users.update_one(
+                {"_id": st.session_state.user["_id"]},
+                {"$pull": {"chatbots": {"name": chatbot["name"]}}}
+            )
+            # 관련된 대화 내역도 삭제
+            db.chat_history.delete_many({"chatbot_name": chatbot["name"], "user": st.session_state.user["username"]})
+            st.session_state.user = db.users.find_one({"_id": st.session_state.user["_id"]})
+            return True
+        except Exception as e:
+            st.error(f"챗봇 삭제 중 오류가 발생했습니다: {str(e)}")
+            return False
+    else:
+        st.session_state.user["chatbots"].pop(index)
+        return True
 
 # 공유 챗봇 페이지
 def show_shared_chatbots_page():
@@ -401,6 +452,10 @@ def show_chatbot_page():
             st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
     if st.button("대화 내역 초기화"):
+        # 현재 대화 내역 저장
+        save_chat_history(chatbot['name'], chatbot['messages'])
+        
+        # 대화 내역 초기화
         default_welcome_message = "안녕하세요! 무엇을 도와드릴까요?"
         chatbot['messages'] = [{"role": "assistant", "content": chatbot.get('welcome_message', default_welcome_message)}]
         if db is not None:
@@ -422,12 +477,40 @@ def show_chat_history_page():
             st.subheader(f"{i+1}. {chatbot['name']}")
             st.write(chatbot['description'])
             if st.button(f"대화 내역 보기 #{i}"):
-                st.write("--- 대화 내역 ---")
+                st.write("--- 현재 대화 내역 ---")
                 for message in chatbot['messages']:
                     st.write(f"{message['role']}: {message['content']}")
                 st.write("---")
+                
+                if db is not None:
+                    st.write("--- 이전 대화 내역 ---")
+                    chat_histories = db.chat_history.find({
+                        "chatbot_name": chatbot['name'],
+                        "user": st.session_state.user["username"]
+                    }).sort("timestamp", -1)
+                    
+                    for history in chat_histories:
+                        st.write(f"대화 시간: {history['timestamp']}")
+                        for message in history['messages']:
+                            st.write(f"{message['role']}: {message['content']}")
+                        st.write("---")
+                        
+                        if st.button(f"이 대화 내역 삭제 {history['_id']}"):
+                            delete_specific_chat_history(history['_id'])
+                            st.success("선택한 대화 내역이 삭제되었습니다.")
+                            st.rerun()
+                else:
+                    st.warning("데이터베이스 연결이 없어 이전 대화 내역을 불러올 수 없습니다.")
     else:
         st.warning("로그인이 필요합니다.")
+
+# 특정 대화 내역 삭제 함수
+def delete_specific_chat_history(history_id):
+    if db is not None:
+        try:
+            db.chat_history.delete_one({"_id": history_id})
+        except Exception as e:
+            st.error(f"대화 내역 삭제 중 오류가 발생했습니다: {str(e)}")
 
 # 메인 애플리케이션
 def main_app():
@@ -468,6 +551,9 @@ def main_app():
         show_shared_chatbot_page()
     elif st.session_state.current_page == 'chat_history':
         show_chat_history_page()
+
+    # 오래된 대화 내역 삭제 (1달 이상 된 내역)
+    delete_old_chat_history()
 
 # 메인 실행 부분
 if 'user' not in st.session_state or not st.session_state.user:
