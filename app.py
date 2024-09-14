@@ -20,6 +20,7 @@ st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layo
 st.markdown("""
 <style>
     .stButton>button {
+        width: 100%;
         background-color: #f0f8ff;
         color: #4682b4;
         border: 1px solid #4682b4;
@@ -38,12 +39,18 @@ st.markdown("""
         padding: 20px;
         margin-bottom: 20px;
         box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+        display: flex;
+        align-items: start;
     }
     .chatbot-card img {
-        width: 100px;
-        height: 100px;
+        width: 60px;
+        height: 60px;
         border-radius: 50%;
         object-fit: cover;
+        margin-left: 20px;
+    }
+    .chatbot-info {
+        flex-grow: 1;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -264,6 +271,7 @@ def show_create_chatbot_page():
     system_prompt = st.text_area("시스템 프롬프트", value="당신은 도움이 되는 AI 어시스턴트입니다.", height=300)
     welcome_message = st.text_input("웰컴 메시지", value="안녕하세요! 무엇을 도와드릴까요?")
     is_shared = st.checkbox("다른 교사와 공유하기")
+    background_color = st.color_picker("챗봇 카드 배경색 선택", "#FFFFFF")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -275,7 +283,8 @@ def show_create_chatbot_page():
                 "welcome_message": welcome_message,
                 "messages": [{"role": "assistant", "content": welcome_message}],
                 "creator": st.session_state.user["username"],
-                "is_shared": is_shared
+                "is_shared": is_shared,
+                "background_color": background_color
             }
             if db is not None:
                 try:
@@ -302,6 +311,7 @@ def show_create_chatbot_page():
             profile_image_url = generate_image(profile_image_prompt)
             if profile_image_url:
                 st.image(profile_image_url, caption="생성된 프로필 이미지", width=200)
+                new_chatbot["profile_image_url"] = profile_image_url
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
@@ -310,20 +320,22 @@ def show_available_chatbots_page():
     for i, chatbot in enumerate(st.session_state.user["chatbots"]):
         with cols[i % 3]:
             st.markdown(f"""
-            <div class="chatbot-card">
-                <h3>{chatbot['name']}</h3>
-                <p>{chatbot['description']}</p>
-                <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" alt="프로필 이미지">
+            <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
+                <div class="chatbot-info">
+                    <h3>{chatbot['name']}</h3>
+                    <p>{chatbot['description']}</p>
+                </div>
+                <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지">
             </div>
             """, unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
-                if st.button(f"사용하기 #{i}"):
+                if st.button("사용하기", key=f"use_{i}"):
                     st.session_state.current_chatbot = i
                     st.session_state.current_page = 'chatbot'
                     st.rerun()
             with col2:
-                if st.button(f"삭제하기 #{i}"):
+                if st.button("삭제하기", key=f"delete_{i}"):
                     if delete_chatbot(i):
                         st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
                         st.rerun()
@@ -357,19 +369,46 @@ def show_shared_chatbots_page():
         for i, chatbot in enumerate(shared_chatbots):
             with cols[i % 3]:
                 st.markdown(f"""
-                <div class="chatbot-card">
-                    <h3>{chatbot['name']}</h3>
-                    <p>{chatbot['description']}</p>
-                    <p>작성자: {chatbot['creator']}</p>
-                    <img src="{chatbot.get('profile_image_url', '/assets/default_profile.png')}" alt="프로필 이미지">
+                <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
+                    <div class="chatbot-info">
+                        <h3>{chatbot['name']}</h3>
+                        <p>{chatbot['description']}</p>
+                        <p>작성자: {chatbot['creator']}</p>
+                    </div>
+                    <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지">
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button(f"사용하기 #{i}"):
-                    st.session_state.current_shared_chatbot = chatbot
-                    st.session_state.current_page = 'shared_chatbot'
-                    st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("사용하기", key=f"use_shared_{i}"):
+                        st.session_state.current_shared_chatbot = chatbot
+                        st.session_state.current_page = 'shared_chatbot'
+                        st.rerun()
+                with col2:
+                    if chatbot['creator'] == st.session_state.user["username"]:
+                        if st.button("삭제하기", key=f"delete_shared_{i}"):
+                            if delete_shared_chatbot(chatbot['_id']):
+                                st.success(f"'{chatbot['name']}' 공유 챗봇이 삭제되었습니다.")
+                                st.rerun()
     else:
         st.write("데이터베이스 연결이 없어 공유 챗봇을 불러올 수 없습니다.")
+
+# 공유 챗봇 삭제 함수
+def delete_shared_chatbot(chatbot_id):
+    if db is not None:
+        try:
+            result = db.shared_chatbots.delete_one({"_id": chatbot_id, "creator": st.session_state.user["username"]})
+            if result.deleted_count > 0:
+                return True
+            else:
+                st.error("삭제 권한이 없거나 챗봇을 찾을 수 없습니다.")
+                return False
+        except Exception as e:
+            st.error(f"공유 챗봇 삭제 중 오류가 발생했습니다: {str(e)}")
+            return False
+    else:
+        st.error("데이터베이스 연결이 없어 공유 챗봇을 삭제할 수 없습니다.")
+        return False
 
 # 특정 챗봇 페이지
 def show_chatbot_page():
@@ -516,25 +555,23 @@ def delete_specific_chat_history(history_id):
 def main_app():
     # 사이드바 메뉴
     st.sidebar.title("메뉴")
-    if st.sidebar.button("홈"):
-        st.session_state.current_page = 'home'
-        st.rerun()
-    if st.sidebar.button("새 챗봇 만들기"):
-        st.session_state.current_page = 'create_chatbot'
-        st.rerun()
-    if st.sidebar.button("사용 가능한 챗봇"):
-        st.session_state.current_page = 'available_chatbots'
-        st.rerun()
-    if st.sidebar.button("수원외국어고등학교 공유 챗봇"):
-        st.session_state.current_page = 'shared_chatbots'
-        st.rerun()
-    if st.sidebar.button("대화 내역 확인"):
-        st.session_state.current_page = 'chat_history'
-        st.rerun()
-    if st.sidebar.button("로그아웃"):
-        st.session_state.user = None
-        st.session_state.current_page = 'home'
-        st.rerun()
+    menu_items = [
+        ("홈", 'home'),
+        ("새 챗봇 만들기", 'create_chatbot'),
+        ("사용 가능한 챗봇", 'available_chatbots'),
+        ("수원외국어고등학교 공유 챗봇", 'shared_chatbots'),
+        ("대화 내역 확인", 'chat_history'),
+        ("로그아웃", 'logout')
+    ]
+    
+    for label, page in menu_items:
+        if st.sidebar.button(label, key=f"menu_{page}", use_container_width=True):
+            if page == 'logout':
+                st.session_state.user = None
+                st.session_state.current_page = 'home'
+            else:
+                st.session_state.current_page = page
+            st.rerun()
 
     # 현재 페이지에 따라 적절한 내용 표시
     if st.session_state.current_page == 'home':
