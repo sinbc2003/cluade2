@@ -214,7 +214,22 @@ def get_users_data():
         st.error("Google Sheets 연결에 실패하여 사용자 데이터를 불러올 수 없습니다.")
         return None
     try:
-        records = sheet.get_all_records()
+        # 모든 데이터를 가져옵니다.
+        values = sheet.get_all_values()
+        if not values:
+            st.error("스프레드시트에 데이터가 없습니다.")
+            return None
+        headers = [header.strip() for header in values[0]]
+        data_rows = values[1:]
+        records = []
+        for row in data_rows:
+            # 행의 길이를 헤더의 길이에 맞춥니다.
+            if len(row) < len(headers):
+                row.extend([''] * (len(headers) - len(row)))
+            elif len(row) > len(headers):
+                row = row[:len(headers)]
+            record = dict(zip(headers, row))
+            records.append(record)
         return records
     except Exception as e:
         st.error(f"사용자 데이터 불러오기 중 오류가 발생했습니다: {str(e)}")
@@ -228,10 +243,32 @@ def login(username, password):
         return None
 
     try:
+        if not users_data:
+            st.error("사용자 데이터가 비어 있습니다.")
+            return None
+
+        # 첫 번째 행의 키(헤더)를 가져옵니다.
+        first_row_keys = list(users_data[0].keys())
+        # 키를 모두 소문자로 변환하여 비교합니다.
+        lower_keys = [key.lower() for key in first_row_keys]
+
+        # '아이디'와 '비밀번호' 키가 있는지 확인합니다.
+        if '아이디' in lower_keys:
+            id_key = first_row_keys[lower_keys.index('아이디')]
+        else:
+            st.error("스프레드시트에 '아이디' 열이 없습니다.")
+            return None
+
+        if '비밀번호' in lower_keys:
+            password_key = first_row_keys[lower_keys.index('비밀번호')]
+        else:
+            st.error("스프레드시트에 '비밀번호' 열이 없습니다.")
+            return None
+
         # 사용자 찾기
         for row in users_data:
-            if row['아이디'] == username:
-                if row['비밀번호'] == password:
+            if row.get(id_key) == username:
+                if row.get(password_key) == password:
                     if password == "1111":
                         return "change_password"
                     # 데이터베이스에서 사용자 정보 가져오기
@@ -247,7 +284,11 @@ def login(username, password):
                     else:
                         return {"username": username, "chatbots": []}
                 else:
-                    break  # 비밀번호가 일치하지 않음
+                    st.error("비밀번호가 잘못되었습니다.")
+                    return None
+        else:
+            st.error("아이디를 찾을 수 없습니다.")
+            return None
     except Exception as e:
         st.error(f"로그인 중 오류가 발생했습니다: {str(e)}")
     return None
@@ -260,12 +301,35 @@ def change_password(username, new_password):
         return False
 
     try:
+        if not users_data:
+            st.error("사용자 데이터가 비어 있습니다.")
+            return False
+
+        # 첫 번째 행의 키(헤더)를 가져옵니다.
+        first_row_keys = list(users_data[0].keys())
+        # 키를 모두 소문자로 변환하여 비교합니다.
+        lower_keys = [key.lower() for key in first_row_keys]
+
+        # '아이디'와 '비밀번호' 키가 있는지 확인합니다.
+        if '아이디' in lower_keys:
+            id_key = first_row_keys[lower_keys.index('아이디')]
+        else:
+            st.error("스프레드시트에 '아이디' 열이 없습니다.")
+            return False
+
+        if '비밀번호' in lower_keys:
+            password_key = first_row_keys[lower_keys.index('비밀번호')]
+        else:
+            st.error("스프레드시트에 '비밀번호' 열이 없습니다.")
+            return False
+
         # 사용자 찾기
         for idx, row in enumerate(users_data):
-            if row['아이디'] == username:
+            if row.get(id_key) == username:
                 # 비밀번호 업데이트
                 row_number = idx + 2  # 헤더를 고려하여 +2
-                sheet.update_cell(row_number, 2, new_password)
+                col_number = lower_keys.index('비밀번호') + 1  # 인덱스가 0부터 시작하므로 +1
+                sheet.update_cell(row_number, col_number, new_password)
                 # 캐시 데이터 갱신
                 get_users_data.clear()
                 return True
@@ -300,7 +364,7 @@ def show_login_page():
                 st.success("로그인 성공!")
                 st.rerun()
             else:
-                st.error("아이디 또는 비밀번호가 잘못되었습니다.")
+                pass  # 오류 메시지는 로그인 함수에서 처리됨
 
 # 비밀번호 변경 페이지
 def show_change_password_page():
