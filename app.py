@@ -478,6 +478,9 @@ def show_home_page():
     if st.sidebar.button("현재 대화내역 초기화", key="reset_chat", help="현재 대화 내역을 초기화합니다.", use_container_width=True):
         st.session_state.home_messages = []
 
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
 # 새 챗봇 만들기 페이지
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
@@ -558,6 +561,9 @@ def show_create_chatbot_page():
             st.session_state.current_page = 'chatbot'
             st.rerun()
 
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
 # 챗봇 수정 페이지
 def show_edit_chatbot_page():
     st.title("챗봇 수정")
@@ -616,12 +622,15 @@ def show_edit_chatbot_page():
             st.session_state.current_page = 'chatbot'
             st.rerun()
 
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
 # 대화 내역 저장 함수 (공개 챗봇용)
 def save_public_chat_history(chatbot_id, user_name, messages):
     if db is not None:
         try:
             chat_history = {
-                "chatbot_id": chatbot_id,
+                "chatbot_id": str(chatbot_id),
                 "user_name": user_name,
                 "timestamp": datetime.now(),
                 "messages": messages
@@ -634,7 +643,20 @@ def save_public_chat_history(chatbot_id, user_name, messages):
 def show_available_chatbots_page():
     st.title("나만 사용 가능한 챗봇")
 
-    if not st.session_state.user.get("chatbots"):
+    if db is not None and st.session_state.user["username"] == 'admin':
+        # admin user can see all chatbots
+        users = db.users.find()
+        all_chatbots = []
+        for user in users:
+            user_chatbots = user.get("chatbots", [])
+            for chatbot in user_chatbots:
+                chatbot["owner"] = user["username"]
+                all_chatbots.append(chatbot)
+        chatbots_to_show = all_chatbots
+    else:
+        chatbots_to_show = st.session_state.user.get("chatbots", [])
+
+    if not chatbots_to_show:
         st.info("아직 만든 챗봇이 없습니다. '새 챗봇 만들기'에서 첫 번째 챗봇을 만들어보세요!")
         return
 
@@ -646,7 +668,7 @@ def show_available_chatbots_page():
         return
 
     cols = st.columns(3)
-    for i, chatbot in enumerate(st.session_state.user["chatbots"]):
+    for i, chatbot in enumerate(chatbots_to_show):
         with cols[i % 3]:
             st.markdown(f"""
             <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
@@ -654,9 +676,10 @@ def show_available_chatbots_page():
                 <div class="chatbot-info">
                     <div class="chatbot-name">{chatbot['name']}</div>
                     <div class="chatbot-description">{chatbot['description']}</div>
-                </div>
-            </div>
             """, unsafe_allow_html=True)
+            if st.session_state.user["username"] == 'admin' and 'owner' in chatbot:
+                st.markdown(f"<p>소유자: {chatbot['owner']}</p>", unsafe_allow_html=True)
+            st.markdown("</div></div>", unsafe_allow_html=True)
             col1, col2, col3 = st.columns(3)
             with col1:
                 if st.button("사용하기", key=f"use_{i}"):
@@ -664,15 +687,17 @@ def show_available_chatbots_page():
                     st.session_state.current_page = 'chatbot'
                     st.rerun()
             with col2:
-                if st.button("수정하기", key=f"edit_{i}"):
-                    st.session_state.editing_chatbot = i
-                    st.session_state.current_page = 'edit_chatbot'
-                    st.rerun()
-            with col3:
-                if st.button("삭제하기", key=f"delete_{i}"):
-                    if delete_chatbot(i):
-                        st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
+                if st.session_state.user["username"] == 'admin' or chatbot.get('creator', '') == st.session_state.user["username"]:
+                    if st.button("수정하기", key=f"edit_{i}"):
+                        st.session_state.editing_chatbot = i
+                        st.session_state.current_page = 'edit_chatbot'
                         st.rerun()
+            with col3:
+                if st.session_state.user["username"] == 'admin' or chatbot.get('creator', '') == st.session_state.user["username"]:
+                    if st.button("삭제하기", key=f"delete_{i}"):
+                        if delete_chatbot(chatbot.get('_id'), chatbot.get('creator', '')):
+                            st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
+                            st.rerun()
             # URL 생성 버튼 추가
             if st.button("URL 생성", key=f"generate_url_{i}"):
                 chatbot_id = str(chatbot.get('_id', i))
@@ -680,31 +705,37 @@ def show_available_chatbots_page():
                 st.write(f"공유 가능한 URL: {shareable_url}")
 
             # 챗봇 제작자만 볼 수 있는 'URL 사용자 대화내역 보기' 버튼 추가
-            if chatbot.get('creator', '') == st.session_state.user["username"]:
+            if chatbot.get('creator', '') == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
                 if st.button("URL 사용자 대화내역 보기", key=f"view_url_history_{i}"):
                     st.session_state.viewing_chatbot_history = str(chatbot['_id'])
                     st.session_state.current_page = 'view_public_chat_history'
                     st.rerun()
 
-# 챗봇 삭제 함수
-def delete_chatbot(index):
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
+# 챗봇 삭제 함수 수정
+def delete_chatbot(chatbot_id, creator):
     if db is not None:
         try:
-            chatbot = st.session_state.user["chatbots"][index]
-            db.users.update_one(
-                {"username": st.session_state.user["username"]},
-                {"$pull": {"chatbots": {"_id": chatbot["_id"]}}}
-            )
-            # 관련된 대화 내역도 삭제
-            db.chat_history.delete_many({"chatbot_name": chatbot["name"], "user": st.session_state.user["username"]})
-            db.public_chat_history.delete_many({"chatbot_id": chatbot["_id"]})
-            st.session_state.user = db.users.find_one({"username": st.session_state.user["username"]})
-            return True
+            if st.session_state.user["username"] == 'admin' or creator == st.session_state.user["username"]:
+                db.users.update_one(
+                    {"chatbots._id": ObjectId(chatbot_id)},
+                    {"$pull": {"chatbots": {"_id": ObjectId(chatbot_id)}}}
+                )
+                # 관련된 대화 내역도 삭제
+                db.chat_history.delete_many({"chatbot_name": chatbot_id})
+                db.public_chat_history.delete_many({"chatbot_id": str(chatbot_id)})
+                st.session_state.user = db.users.find_one({"username": st.session_state.user["username"]})
+                return True
+            else:
+                st.error("삭제 권한이 없습니다.")
+                return False
         except Exception as e:
             st.error(f"챗봇 삭제 중 오류가 발생했습니다: {str(e)}")
             return False
     else:
-        st.session_state.user["chatbots"].pop(index)
+        st.session_state.user["chatbots"] = [cb for cb in st.session_state.user["chatbots"] if cb.get('_id') != chatbot_id]
         return True
 
 # 공유 챗봇 페이지
@@ -732,13 +763,13 @@ def show_shared_chatbots_page():
                         st.session_state.current_page = 'shared_chatbot'
                         st.rerun()
                 with col2:
-                    if chatbot['creator'] == st.session_state.user["username"]:
+                    if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
                         if st.button("수정하기", key=f"edit_shared_{i}"):
                             st.session_state.editing_shared_chatbot = chatbot
                             st.session_state.current_page = 'edit_shared_chatbot'
                             st.rerun()
                 with col3:
-                    if chatbot['creator'] == st.session_state.user["username"]:
+                    if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
                         if st.button("삭제하기", key=f"delete_shared_{i}"):
                             if delete_shared_chatbot(chatbot['_id']):
                                 st.success(f"'{chatbot['name']}' 공유 챗봇이 삭제되었습니다.")
@@ -746,11 +777,14 @@ def show_shared_chatbots_page():
     else:
         st.write("데이터베이스 연결이 없어 공유 챗봇을 불러올 수 없습니다.")
 
-# 공유 챗봇 삭제 함수
+# 공유 챗봇 삭제 함수 수정
 def delete_shared_chatbot(chatbot_id):
     if db is not None:
         try:
-            result = db.shared_chatbots.delete_one({"_id": chatbot_id, "creator": st.session_state.user["username"]})
+            if st.session_state.user["username"] == 'admin':
+                result = db.shared_chatbots.delete_one({"_id": chatbot_id})
+            else:
+                result = db.shared_chatbots.delete_one({"_id": chatbot_id, "creator": st.session_state.user["username"]})
             if result.deleted_count > 0:
                 return True
             else:
@@ -816,9 +850,22 @@ def show_edit_shared_chatbot_page():
         else:
             st.error("데이터베이스 연결이 없어 공유 챗봇을 수정할 수 없습니다.")
 
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
 # 특정 챗봇 페이지
 def show_chatbot_page():
-    chatbot = st.session_state.user["chatbots"][st.session_state.current_chatbot]
+    if db is not None and st.session_state.user["username"] == 'admin':
+        # admin user can access any chatbot
+        users = db.users.find()
+        all_chatbots = []
+        for user in users:
+            user_chatbots = user.get("chatbots", [])
+            for chatbot in user_chatbots:
+                all_chatbots.append(chatbot)
+        chatbot = all_chatbots[st.session_state.current_chatbot]
+    else:
+        chatbot = st.session_state.user["chatbots"][st.session_state.current_chatbot]
 
     # 제목과 프로필 이미지를 함께 표시
     st.markdown(f"""
@@ -829,7 +876,7 @@ def show_chatbot_page():
     """, unsafe_allow_html=True)
 
     # 수정 버튼 클릭 처리
-    if chatbot.get('creator', '') == st.session_state.user["username"]:
+    if chatbot.get('creator', '') == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
         st.markdown('<div class="small-button">', unsafe_allow_html=True)
         if st.button("수정", key="edit_button"):
             st.session_state.editing_chatbot = st.session_state.current_chatbot
@@ -930,6 +977,9 @@ def show_chatbot_page():
         else:
             st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
 # 공유 챗봇 대화 페이지
 def show_shared_chatbot_page():
     if 'current_shared_chatbot' not in st.session_state:
@@ -947,7 +997,7 @@ def show_shared_chatbot_page():
     """, unsafe_allow_html=True)
 
     # 수정 버튼 클릭 처리
-    if chatbot['creator'] == st.session_state.user["username"]:
+    if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
         st.markdown('<div class="small-button">', unsafe_allow_html=True)
         if st.button("수정", key="edit_button"):
             st.session_state.editing_shared_chatbot = chatbot
@@ -1026,7 +1076,10 @@ def show_shared_chatbot_page():
                 if full_response:
                     chatbot['messages'].append({"role": "assistant", "content": full_response})
 
-# 비로그인 사용자용 챗봇 페이지 함수 추가
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
+# 비로그인 사용자용 챗봇 페이지 함수 수정
 def show_public_chatbot_page(chatbot_id):
     st.title("챗봇 이용하기")
     name = st.text_input("이름을 입력하세요")
@@ -1054,7 +1107,7 @@ def show_public_chatbot_page(chatbot_id):
             # 대화 시작
             start_chatting(chatbot, st.session_state.user_name)
 
-# 대화 시작 함수 추가
+# 대화 시작 함수 수정
 def start_chatting(chatbot, user_name):
     if 'public_chatbot_messages' not in st.session_state:
         st.session_state.public_chatbot_messages = [{"role": "assistant", "content": chatbot.get('welcome_message', "안녕하세요! 무엇을 도와드릴까요?")}]
@@ -1162,7 +1215,7 @@ def show_chat_history_page():
                 if db is not None:
                     st.write("--- 공개 대화 내역 ---")
                     chat_histories = db.public_chat_history.find({
-                        "chatbot_id": chatbot.get('_id')
+                        "chatbot_id": str(chatbot.get('_id'))
                     }).sort("timestamp", -1)
 
                     for history in chat_histories:
@@ -1176,6 +1229,9 @@ def show_chat_history_page():
     else:
         st.warning("로그인이 필요합니다.")
 
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
 # 특정 대화 내역 삭제 함수
 def delete_specific_chat_history(history_id):
     if db is not None:
@@ -1188,7 +1244,7 @@ def delete_specific_chat_history(history_id):
 def show_public_chatbot_history():
     st.title("URL 사용자 대화내역")
 
-    chatbot_id = st.session_state.viewing_chatbot_history
+    chatbot_id = str(st.session_state.viewing_chatbot_history)
 
     # 챗봇 정보 가져오기 및 제작자 확인
     user = db.users.find_one(
@@ -1197,7 +1253,7 @@ def show_public_chatbot_history():
     )
     if user:
         chatbot = user['chatbots'][0]
-        if chatbot.get('creator', '') != st.session_state.user["username"]:
+        if chatbot.get('creator', '') != st.session_state.user["username"] and st.session_state.user["username"] != 'admin':
             st.error("해당 챗봇의 대화 내역을 볼 권한이 없습니다.")
             return
     else:
@@ -1229,6 +1285,16 @@ def show_public_chatbot_history():
     else:
         st.warning("데이터베이스 연결이 없어 대화 내역을 불러올 수 없습니다.")
 
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
+
+# 사이드바 맨 아래에 작은 글씨 추가하는 함수
+def add_sidebar_footer():
+    st.sidebar.markdown("""
+    ---
+    <small>제작 : 수원외고 교사 신병철(sinbc2004@naver.com)</small>
+    """, unsafe_allow_html=True)
+
 # 메인 애플리케이션
 def main_app():
     # 사이드바 메뉴
@@ -1252,12 +1318,6 @@ def main_app():
                 st.session_state.current_page = page
 
             st.rerun()  # 페이지 갱신
-
-    # 사이드바 맨 아래에 작은 글씨 추가
-    st.sidebar.markdown("""
-    ---
-    <small>제작 : 수원외고 교사 신병철(sinbc2004@naver.com)</small>
-    """, unsafe_allow_html=True)
 
     # 현재 페이지에 따라 적절한 내용 표시
     if st.session_state.current_page == 'home':
@@ -1292,6 +1352,9 @@ def main_app():
 
     # 오래된 대화 내역 삭제 (1달 이상 된 내역)
     delete_old_chat_history()
+
+    # 사이드바 맨 아래에 작은 글씨 추가
+    add_sidebar_footer()
 
 # 메인 실행 부분
 def main():
