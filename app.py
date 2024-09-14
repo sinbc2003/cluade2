@@ -11,6 +11,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 import gspread
+from google.auth.exceptions import GoogleAuthError
 
 # 전역 변수로 db 선언
 db = None
@@ -124,13 +125,34 @@ except Exception as e:
     st.stop()
 
 # Google Sheets API 설정
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-client = gspread.authorize(creds)
+try:
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    client = gspread.authorize(creds)
 
-# 스프레드시트 열기
-sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0").sheet1
-
+    # 스프레드시트 열기
+    sheet_url = "https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0"
+    try:
+        sheet = client.open_by_url(sheet_url).sheet1
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error(f"스프레드시트를 찾을 수 없습니다. URL을 확인해주세요: {sheet_url}")
+        sheet = None
+    except gspread.exceptions.NoValidUrlKeyFound:
+        st.error(f"올바르지 않은 스프레드시트 URL입니다: {sheet_url}")
+        sheet = None
+    except gspread.exceptions.APIError as e:
+        if 'PERMISSION_DENIED' in str(e):
+            st.error("스프레드시트에 접근할 권한이 없습니다. 서비스 계정 이메일을 스프레드시트의 공유 설정에 추가했는지 확인해주세요.")
+        else:
+            st.error(f"Google Sheets API 오류: {str(e)}")
+        sheet = None
+except GoogleAuthError as e:
+    st.error(f"Google 인증 오류: {str(e)}")
+    sheet = None
+except Exception as e:
+    st.error(f"Google Sheets 설정 중 오류가 발생했습니다: {str(e)}")
+    sheet = None
+    
 # 모델 선택 드롭다운
 MODEL_OPTIONS = [
     "gpt-4o",
@@ -171,8 +193,12 @@ def generate_image(prompt):
         st.error("이미지 생성에 실패했습니다. 다시 시도해주세요.")
         return None
 
-# 로그인 함수
+# 로그인 함수 수정
 def login(username, password):
+    if sheet is None:
+        st.error("Google Sheets 연결에 실패하여 로그인할 수 없습니다.")
+        return None
+    
     try:
         # 사용자 찾기
         cell = sheet.find(username)
@@ -186,8 +212,12 @@ def login(username, password):
         st.error(f"로그인 중 오류가 발생했습니다: {str(e)}")
     return None
 
-# 비밀번호 변경 함수
+# 비밀번호 변경 함수 수정
 def change_password(username, new_password):
+    if sheet is None:
+        st.error("Google Sheets 연결에 실패하여 비밀번호를 변경할 수 없습니다.")
+        return False
+    
     try:
         # 사용자 찾기
         cell = sheet.find(username)
