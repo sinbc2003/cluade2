@@ -9,6 +9,8 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 import urllib.parse
 from datetime import datetime, timedelta
+import gspread
+from google.oauth2.service_account import Credentials
 
 # 전역 변수로 db 선언
 db = None
@@ -68,6 +70,26 @@ st.markdown("""
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
     }
+    .chatbot-title {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .chatbot-title img {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        margin-right: 15px;
+    }
+    .edit-button {
+        font-size: 12px;
+        padding: 5px 10px;
+        margin-left: 10px;
+    }
+    .reset-button {
+        background-color: #98FB98;
+        color: #000000;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -82,6 +104,14 @@ except Exception as e:
 
 # Google Apps Script 웹 앱 URL
 GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2gynWGYXtmYH3V0mIYqkZolC9Nbt5HwUVtFMChmgqBUqasSSZvulcTPTVVFzFy0gy/exec"
+
+# Google Sheets API 설정
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+creds = Credentials.from_service_account_file('path/to/your/service_account.json', scopes=scope)
+client = gspread.authorize(creds)
+
+# 스프레드시트 열기
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0").sheet1
 
 # API 키 가져오기
 ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
@@ -141,30 +171,35 @@ def generate_image(prompt):
         st.error("이미지 생성에 실패했습니다. 다시 시도해주세요.")
         return None
 
+# 비밀번호 변경 함수
+def change_password(username, new_password):
+    try:
+        # 사용자 찾기
+        cell = sheet.find(username)
+        if cell:
+            # 비밀번호 업데이트
+            sheet.update_cell(cell.row, 2, new_password)
+            return True
+        else:
+            return False
+    except Exception as e:
+        st.error(f"비밀번호 변경 중 오류가 발생했습니다: {str(e)}")
+        return False
+
 # 로그인 함수
 def login(username, password):
-    params = {
-        "action": "login",
-        "username": username,
-        "password": password
-    }
     try:
-        response = requests.get(GOOGLE_APPS_SCRIPT_URL, params=params, timeout=10)
-        if response.text.strip().lower() == "true":
-            if db is not None:
-                user = db.users.find_one({"username": username})
-                if not user:
-                    new_user = {"username": username, "chatbots": []}
-                    result = db.users.insert_one(new_user)
-                    user = db.users.find_one({"_id": result.inserted_id})
-                return user
-            else:
-                st.warning("데이터베이스 연결이 없습니다. 임시 사용자 데이터를 사용합니다.")
+        # 사용자 찾기
+        cell = sheet.find(username)
+        if cell:
+            row = sheet.row_values(cell.row)
+            if row[1] == password:
+                if password == "1111":
+                    return "change_password"
                 return {"username": username, "chatbots": []}
-        return None
-    except requests.RequestException as e:
-        st.error("로그인 요청 중 오류가 발생했습니다. 다시 시도해주세요.")
-        return None
+    except Exception as e:
+        st.error(f"로그인 중 오류가 발생했습니다: {str(e)}")
+    return None
 
 # 로그인 페이지
 def show_login_page():
@@ -173,9 +208,22 @@ def show_login_page():
     password = st.text_input("비밀번호", type="password")
     if st.button("로그인"):
         with st.spinner("로그인 중..."):
-            user = login(username, password)
-            if user:
-                st.session_state.user = user
+            result = login(username, password)
+            if result == "change_password":
+                st.warning("초기 비밀번호를 사용 중입니다. 비밀번호를 변경해주세요.")
+                new_password = st.text_input("새 비밀번호", type="password")
+                confirm_password = st.text_input("새 비밀번호 확인", type="password")
+                if st.button("비밀번호 변경"):
+                    if new_password == confirm_password:
+                        if change_password(username, new_password):
+                            st.success("비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 다시 로그인해주세요.")
+                            st.rerun()
+                        else:
+                            st.error("비밀번호 변경에 실패했습니다.")
+                    else:
+                        st.error("새 비밀번호가 일치하지 않습니다.")
+            elif result:
+                st.session_state.user = result
                 st.session_state.current_page = 'home'
                 st.success("로그인 성공!")
                 st.rerun()
@@ -275,7 +323,7 @@ def show_home_page():
             if full_response:
                 st.session_state.home_messages.append({"role": "assistant", "content": full_response})
 
-    if st.button("대화 내역 초기화"):
+    if st.sidebar.button("현재 대화내역 초기화", key="reset_chat", help="현재 대화 내역을 초기화합니다.", use_container_width=True):
         st.session_state.home_messages = []
         st.rerun()
 
@@ -568,8 +616,41 @@ def delete_shared_chatbot(chatbot_id):
 # 특정 챗봇 페이지
 def show_chatbot_page():
     chatbot = st.session_state.user["chatbots"][st.session_state.current_chatbot]
-    st.title(f"{chatbot['name']} 챗봇")
+    
+    # 제목과 프로필 이미지를 함께 표시
+    st.markdown(f"""
+    <div class="chatbot-title">
+        <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/50')}" alt="프로필 이미지">
+        <h1>{chatbot['name']} 챗봇</h1>
+        {'<button class="stButton edit-button">수정</button>' if chatbot['creator'] == st.session_state.user["username"] else ''}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 수정 버튼 클릭 처리
+    if chatbot['creator'] == st.session_state.user["username"] and st.button("수정", key="edit_button"):
+        st.session_state.editing_chatbot = st.session_state.current_chatbot
+        st.session_state.current_page = 'edit_chatbot'
+        st.rerun()
+
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
+    
+    # 사이드바에 대화 내역 초기화 버튼 추가
+    if st.sidebar.button("현재 대화내역 초기화", key="reset_chat", help="현재 대화 내역을 초기화합니다.", use_container_width=True):
+        # 현재 대화 내역 저장
+        save_chat_history(chatbot['name'], chatbot['messages'])
+        
+        # 대화 내역 초기화
+        default_welcome_message = "안녕하세요! 무엇을 도와드릴까요?"
+        chatbot['messages'] = [{"role": "assistant", "content": chatbot.get('welcome_message', default_welcome_message)}]
+        if db is not None:
+            try:
+                db.users.update_one(
+                    {"_id": st.session_state.user["_id"]},
+                    {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": chatbot['messages']}}
+                )
+            except Exception as e:
+                st.error(f"대화 내역 초기화 중 오류가 발생했습니다: {str(e)}")
+        st.rerun()
     
     for message in chatbot['messages']:
         with st.chat_message(message["role"]):
@@ -645,23 +726,6 @@ def show_chatbot_page():
         else:
             st.session_state.user["chatbots"][st.session_state.current_chatbot] = chatbot
 
-    if st.button("대화 내역 초기화"):
-        # 현재 대화 내역 저장
-        save_chat_history(chatbot['name'], chatbot['messages'])
-        
-        # 대화 내역 초기화
-        default_welcome_message = "안녕하세요! 무엇을 도와드릴까요?"
-        chatbot['messages'] = [{"role": "assistant", "content": chatbot.get('welcome_message', default_welcome_message)}]
-        if db is not None:
-            try:
-                db.users.update_one(
-                    {"_id": st.session_state.user["_id"]},
-                    {"$set": {f"chatbots.{st.session_state.current_chatbot}.messages": chatbot['messages']}}
-                )
-            except Exception as e:
-                st.error(f"대화 내역 초기화 중 오류가 발생했습니다: {str(e)}")
-        st.rerun()
-
 # 공유 챗봇 대화 페이지
 def show_shared_chatbot_page():
     if 'current_shared_chatbot' not in st.session_state:
@@ -669,8 +733,28 @@ def show_shared_chatbot_page():
         return
 
     chatbot = st.session_state.current_shared_chatbot
-    st.title(f"{chatbot['name']} (공유 챗봇)")
+    
+    # 제목과 프로필 이미지를 함께 표시
+    st.markdown(f"""
+    <div class="chatbot-title">
+        <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/50')}" alt="프로필 이미지">
+        <h1>{chatbot['name']} (공유 챗봇)</h1>
+        {'<button class="stButton edit-button">수정</button>' if chatbot['creator'] == st.session_state.user["username"] else ''}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 수정 버튼 클릭 처리
+    if chatbot['creator'] == st.session_state.user["username"] and st.button("수정", key="edit_button"):
+        st.session_state.editing_shared_chatbot = chatbot
+        st.session_state.current_page = 'edit_shared_chatbot'
+        st.rerun()
+
     selected_model = st.sidebar.selectbox("모델 선택", MODEL_OPTIONS)
+    
+    # 사이드바에 대화 내역 초기화 버튼 추가
+    if st.sidebar.button("현재 대화내역 초기화", key="reset_chat", help="현재 대화 내역을 초기화합니다.", use_container_width=True):
+        chatbot['messages'] = [{"role": "assistant", "content": chatbot.get('welcome_message', "안녕하세요! 무엇을 도와드릴까요?")}]
+        st.rerun()
     
     if 'messages' not in chatbot:
         chatbot['messages'] = [{"role": "assistant", "content": chatbot.get('welcome_message', "안녕하세요! 무엇을 도와드릴까요?")}]
@@ -738,10 +822,6 @@ def show_shared_chatbot_page():
                 chatbot['messages'].append({"role": "assistant", "content": full_response})
                 
         # 공유 챗봇의 경우 메시지 저장하지 않음
-
-    if st.button("대화 내역 초기화"):
-        chatbot['messages'] = [{"role": "assistant", "content": chatbot.get('welcome_message', "안녕하세요! 무엇을 도와드릴까요?")}]
-        st.rerun()
 
 # 대화 내역 확인 페이지
 def show_chat_history_page():
