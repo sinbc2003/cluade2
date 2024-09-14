@@ -41,6 +41,8 @@ st.markdown("""
         box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
         display: flex;
         align-items: start;
+        height: 200px;  /* 고정 높이 설정 */
+        overflow: hidden;  /* 내용이 넘치면 숨김 */
     }
     .chatbot-card img {
         width: 60px;
@@ -51,6 +53,20 @@ st.markdown("""
     }
     .chatbot-info {
         flex-grow: 1;
+        overflow: hidden;  /* 내용이 넘치면 숨김 */
+    }
+    .chatbot-name {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .chatbot-description {
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;  /* 최대 3줄까지 표시 */
+        -webkit-box-orient: vertical;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -284,7 +300,8 @@ def show_create_chatbot_page():
                 "messages": [{"role": "assistant", "content": welcome_message}],
                 "creator": st.session_state.user["username"],
                 "is_shared": is_shared,
-                "background_color": background_color
+                "background_color": background_color,
+                "profile_image_url": "https://via.placeholder.com/60"  # 기본 이미지 URL 설정
             }
             if db is not None:
                 try:
@@ -312,6 +329,15 @@ def show_create_chatbot_page():
             if profile_image_url:
                 st.image(profile_image_url, caption="생성된 프로필 이미지", width=200)
                 new_chatbot["profile_image_url"] = profile_image_url
+                # 데이터베이스 업데이트
+                if db is not None:
+                    try:
+                        db.users.update_one(
+                            {"_id": st.session_state.user["_id"], "chatbots.name": chatbot_name},
+                            {"$set": {"chatbots.$.profile_image_url": profile_image_url}}
+                        )
+                    except Exception as e:
+                        st.error(f"프로필 이미지 업데이트 중 오류가 발생했습니다: {str(e)}")
 
 # 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
@@ -322,8 +348,8 @@ def show_available_chatbots_page():
             st.markdown(f"""
             <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
                 <div class="chatbot-info">
-                    <h3>{chatbot['name']}</h3>
-                    <p>{chatbot['description']}</p>
+                    <div class="chatbot-name">{chatbot['name']}</div>
+                    <div class="chatbot-description">{chatbot['description']}</div>
                 </div>
                 <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지">
             </div>
@@ -371,8 +397,8 @@ def show_shared_chatbots_page():
                 st.markdown(f"""
                 <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
                     <div class="chatbot-info">
-                        <h3>{chatbot['name']}</h3>
-                        <p>{chatbot['description']}</p>
+                        <div class="chatbot-name">{chatbot['name']}</div>
+                        <div class="chatbot-description">{chatbot['description']}</div>
                         <p>작성자: {chatbot['creator']}</p>
                     </div>
                     <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/60')}" alt="프로필 이미지">
