@@ -217,13 +217,14 @@ def is_image_request(text):
 # 이미지 업로드 함수 추가
 def upload_image_to_gcs(image_data, filename):
     try:
-        bucket_name = 'sawlteacher'  # 당신의 버킷 이름으로 변경하세요
+        bucket_name = 'sawlteacher'  # 버킷 이름을 정확히 입력하세요
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(filename)
         blob.upload_from_string(image_data, content_type='image/png')
-        # 업로드한 이미지를 공개적으로 설정
-        blob.make_public()
-        return blob.public_url
+        # blob.make_public() 호출 제거
+        # 업로드한 객체의 공개 URL 생성
+        public_url = f"https://storage.googleapis.com/{bucket_name}/{filename}"
+        return public_url
     except Exception as e:
         st.error(f"이미지를 Cloud Storage에 업로드하는 중 오류가 발생했습니다: {str(e)}")
         return None
