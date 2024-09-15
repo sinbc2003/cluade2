@@ -18,7 +18,7 @@ import base64  # For QR code image display
 import json
 from google.cloud import storage
 import io
-import pinecone
+from pinecone import Client, ServerConfig
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone
 from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
@@ -600,21 +600,21 @@ def show_create_chatbot_page():
     
                 documents = loader.load()
     
-                # Pinecone 초기화
-                pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-    
+                # Pinecone 클라이언트 초기화
+                pc = Client(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+            
                 index_name = 'teacher'
-    
+            
                 # 인덱스 존재 여부 확인
-                if index_name not in pinecone.list_indexes():
+                if index_name not in pc.list_indexes():
                     st.error(f"Pinecone 인덱스 '{index_name}'가 존재하지 않습니다.")
                     st.stop()
-    
+            
                 # 임베딩 생성
                 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    
+            
                 # 벡터스토어에 문서 삽입
-                vectorstore = Pinecone.from_documents(documents, embeddings, index_name=index_name)
+                vectorstore = Pinecone.from_documents(documents, embeddings, index=pc.Index(index_name))
     
                 st.success("파일이 성공적으로 업로드되고 처리되었습니다.")
     
