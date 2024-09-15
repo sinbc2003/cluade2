@@ -1,10 +1,10 @@
 streamlit
-langchain
+langchain==0.0.232
 openai
 anthropic
 google-generativeai
 pinecone-client
-pypdf
+PyPDF2
 python-docx
 openpyxl
 tiktoken
