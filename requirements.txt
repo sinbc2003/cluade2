@@ -7,3 +7,5 @@ pymongo
 dnspython
 gspread
 google-auth
+google-cloud-storage
+
