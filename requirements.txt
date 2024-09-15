@@ -2,10 +2,13 @@ streamlit
 anthropic
 openai
 google-generativeai
-requests
 pymongo
-dnspython
 gspread
 google-auth
+google-auth-oauthlib
 google-cloud-storage
-
+pinecone-client
+langchain
+PyPDF2
+python-docx
+openpyxl
