@@ -22,6 +22,7 @@ import pinecone
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone
 from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
+import tempfile
 
 
 # 전역 변수로 db 선언
@@ -563,6 +564,7 @@ def show_home_page():
         st.session_state.home_messages = []
 
 # 새 챗봇 만들기 페이지
+
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
     
@@ -577,11 +579,21 @@ def show_create_chatbot_page():
                 # 파일 처리 로직
                 file_extension = uploaded_file.name.split('.')[-1].lower()
                 if file_extension == 'pdf':
-                    loader = PyPDFLoader(uploaded_file)
+                    # 업로드된 파일을 임시 파일로 저장
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                        tmp_file.write(uploaded_file.read())
+                        tmp_file_path = tmp_file.name
+                    loader = PyPDFLoader(tmp_file_path)
                 elif file_extension == 'docx':
-                    loader = Docx2txtLoader(uploaded_file)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
+                        tmp_file.write(uploaded_file.read())
+                        tmp_file_path = tmp_file.name
+                    loader = Docx2txtLoader(tmp_file_path)
                 elif file_extension == 'txt':
-                    loader = TextLoader(uploaded_file)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as tmp_file:
+                        tmp_file.write(uploaded_file.read())
+                        tmp_file_path = tmp_file.name
+                    loader = TextLoader(tmp_file_path)
                 else:
                     st.error("지원되지 않는 파일 형식입니다.")
                     st.stop()
