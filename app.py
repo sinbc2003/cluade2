@@ -18,10 +18,10 @@ import base64  # For QR code image display
 import json
 from google.cloud import storage
 import io
-import pinecone
+from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone
-from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
+import pinecone
 
 
 # 전역 변수로 db 선언
