@@ -18,12 +18,6 @@ import base64  # For QR code image display
 import json
 from google.cloud import storage
 import io
-from pinecone import Client, ServerConfig
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import Pinecone
-from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
-import tempfile
-
 
 # 전역 변수로 db 선언
 db = None
@@ -131,9 +125,6 @@ except Exception as e:
 ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-PINECONE_API_KEY = st.secrets["PINECONE"]["API_KEY"]
-PINECONE_ENVIRONMENT = st.secrets["PINECONE"]["ENVIRONMENT"]
-
 
 if not (ANTHROPIC_API_KEY and OPENAI_API_KEY and GEMINI_API_KEY):
     st.error("하나 이상의 API 키가 설정되지 않았습니다. Streamlit Cloud의 환경 변수를 확인해주세요.")
@@ -564,92 +555,8 @@ def show_home_page():
         st.session_state.home_messages = []
 
 # 새 챗봇 만들기 페이지
-
 def show_create_chatbot_page():
     st.title("새 챗봇 만들기")
-    
-    # 파일 업로드 섹션 추가
-    st.header("📂 파일 업로드하여 챗봇 생성")
-    
-    uploaded_file = st.file_uploader("파일을 업로드하세요 (PDF, DOCX, TXT 형식)", type=['pdf', 'docx', 'txt'])
-    
-    if uploaded_file is not None:
-        if st.session_state.user["username"] in ['admin', '신병철']:
-            with st.spinner("파일을 처리하고 있습니다..."):
-                # 파일 처리 로직
-                file_extension = uploaded_file.name.split('.')[-1].lower()
-                if file_extension == 'pdf':
-                    # 업로드된 파일을 임시 파일로 저장
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                        tmp_file.write(uploaded_file.read())
-                        tmp_file_path = tmp_file.name
-                    loader = PyPDFLoader(tmp_file_path)
-                elif file_extension == 'docx':
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
-                        tmp_file.write(uploaded_file.read())
-                        tmp_file_path = tmp_file.name
-                    loader = Docx2txtLoader(tmp_file_path)
-                elif file_extension == 'txt':
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as tmp_file:
-                        tmp_file.write(uploaded_file.read())
-                        tmp_file_path = tmp_file.name
-                    loader = TextLoader(tmp_file_path)
-                else:
-                    st.error("지원되지 않는 파일 형식입니다.")
-                    st.stop()
-    
-                documents = loader.load()
-    
-                # Pinecone 클라이언트 초기화
-                pc = Client(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-            
-                index_name = 'teacher'
-            
-                # 인덱스 존재 여부 확인
-                if index_name not in pc.list_indexes():
-                    st.error(f"Pinecone 인덱스 '{index_name}'가 존재하지 않습니다.")
-                    st.stop()
-            
-                # 임베딩 생성
-                embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-            
-                # 벡터스토어에 문서 삽입
-                vectorstore = Pinecone.from_documents(documents, embeddings, index=pc.Index(index_name))
-    
-                st.success("파일이 성공적으로 업로드되고 처리되었습니다.")
-    
-                # 새로운 챗봇 생성
-                new_chatbot = {
-                    "name": uploaded_file.name,
-                    "description": "업로드된 문서를 기반으로 답변하는 챗봇입니다.",
-                    "system_prompt": "사용자의 질문에 업로드된 문서의 내용을 바탕으로 답변하세요.",
-                    "welcome_message": "안녕하세요! 업로드된 문서를 바탕으로 질문에 답변해 드립니다.",
-                    "messages": [],
-                    "creator": st.session_state.user["username"],
-                    "is_shared": False,
-                    "background_color": "#FFFFFF",
-                    "profile_image_url": "https://via.placeholder.com/100",
-                    "vectorstore_index": index_name
-                }
-    
-                # 챗봇에 고유 ID 추가
-                new_chatbot['_id'] = ObjectId()
-                db.users.update_one(
-                    {"username": st.session_state.user["username"]},
-                    {"$push": {"chatbots": new_chatbot}},
-                    upsert=True
-                )
-                # 사용자 정보 갱신
-                st.session_state.user = db.users.find_one({"username": st.session_state.user["username"]})
-                st.success(f"'{uploaded_file.name}' 챗봇이 생성되었습니다!")
-    
-                # 생성된 챗봇으로 이동
-                st.session_state.current_chatbot = len(st.session_state.user['chatbots']) - 1
-                st.session_state.current_page = 'chatbot'
-                st.experimental_rerun()
-        else:
-            st.warning("권한이 있는 선생님만 파일 업로드를 할 수 있습니다.(비싸요ㅠ)")
-
     chatbot_name = st.text_input("챗봇 이름")
     chatbot_description = st.text_input("챗봇 소개")
     system_prompt = st.text_area("시스템 프롬프트", value=
@@ -824,6 +731,7 @@ def save_public_chat_history(chatbot_id, user_name, messages):
 # 나만 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
     st.title("나만 사용 가능한 챗봇")
+
     if db is not None and st.session_state.user["username"] == 'admin':
         # admin user can see all chatbots
         users = db.users.find()
@@ -1151,33 +1059,18 @@ def show_chatbot_page():
             else:
                 try:
                     start_time = datetime.now()
-
-                    
-                    # 벡터스토어를 사용하는 챗봇인지 확인
-                    if 'vectorstore_index' in chatbot:
-                        # Pinecone 초기화
-                        pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-                        index_name = chatbot['vectorstore_index']
-    
-                        # 임베딩 및 벡터스토어 설정
-                        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-                        vectorstore = Pinecone(index_name, embeddings.embed_query, "text")
-    
-                        # LLM 설정
-                        from langchain.llms import OpenAI
-                        llm = OpenAI(openai_api_key=OPENAI_API_KEY, model_name=selected_model)
-    
-                        # RetrievalQA 체인 생성
-                        from langchain.chains import RetrievalQA
-                        qa_chain = RetrievalQA.from_chain_type(llm=llm, chain_type='stuff', retriever=vectorstore.as_retriever())
-    
-                        # 답변 생성
-                        response = qa_chain.run(prompt)
-                        full_response = response
-                        message_placeholder.markdown(full_response)
-    
+                    if "gpt" in selected_model:
+                        response = openai_client.chat.completions.create(
+                            model=selected_model,
+                            messages=[{"role": "system", "content": chatbot['system_prompt']}] + chatbot['messages'],
+                            stream=True
+                        )
+                        for chunk in response:
+                            if chunk.choices[0].delta.content is not None:
+                                full_response += chunk.choices[0].delta.content
+                                message_placeholder.markdown(full_response + "▌")
                         # 사용량 기록
-                        record_usage(st.session_state.user["username"], 'vectorstore', start_time)
+                        record_usage(st.session_state.user["username"], selected_model, start_time)
                     elif "gemini" in selected_model:
                         model = genai.GenerativeModel(selected_model)
                         response = model.generate_content(chatbot['system_prompt'] + "\n\n" + prompt, stream=True)
