@@ -410,12 +410,12 @@ def show_login_page():
                 st.session_state.current_page = 'change_password'
                 st.session_state.username = username
                 st.warning("초기 비밀번호를 사용 중입니다. 비밀번호를 변경해주세요.")
-                st.experimental_rerun()
+                st.rerun()
             elif result:
                 st.session_state.user = result
                 st.session_state.current_page = 'home'
                 st.success("로그인 성공!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 pass  # 오류 메시지는 로그인 함수에서 처리됨
 
@@ -430,7 +430,7 @@ def show_change_password_page():
                 st.success("비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 다시 로그인해주세요.")
                 st.session_state.current_page = 'login'
                 st.session_state.username = ''
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("비밀번호 변경에 실패했습니다.")
         else:
