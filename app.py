@@ -634,7 +634,7 @@ def show_create_chatbot_page():
                 # 생성된 챗봇으로 이동
                 st.session_state.current_chatbot = len(st.session_state.user['chatbots']) - 1
                 st.session_state.current_page = 'chatbot'
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.warning("권한이 있는 선생님만 파일 업로드를 할 수 있습니다.(비싸요ㅠ)")
 
