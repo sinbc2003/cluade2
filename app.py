@@ -18,10 +18,10 @@ import base64  # For QR code image display
 import json
 from google.cloud import storage
 import io
-from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
+import pinecone
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone
-import pinecone
+from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 
 
 # 전역 변수로 db 선언
@@ -634,7 +634,7 @@ def show_create_chatbot_page():
                 # 생성된 챗봇으로 이동
                 st.session_state.current_chatbot = len(st.session_state.user['chatbots']) - 1
                 st.session_state.current_page = 'chatbot'
-                st.rerun()
+                st.experimental_rerun()
         else:
             st.warning("권한이 있는 선생님만 파일 업로드를 할 수 있습니다.(비싸요ㅠ)")
 
@@ -1323,7 +1323,7 @@ def show_public_chatbot_page(chatbot_id):
         return
 
     # URL에서 모델 파라미터 가져오기
-    query_params = st.query_params
+    query_params = st.experimental_get_query_params()
     selected_model = query_params.get('model', ['gpt-4o'])[0]
 
     # 챗봇 이름과 프로필 이미지 표시
@@ -1647,7 +1647,7 @@ def add_sidebar_footer():
 
 # 메인 실행 부분
 def main():
-    query_params = st.query_params
+    query_params = st.experimental_get_query_params()
     if 'chatbot_id' in query_params:
         chatbot_id = query_params['chatbot_id'][0]
         show_public_chatbot_page(chatbot_id)
