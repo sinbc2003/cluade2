@@ -14,9 +14,10 @@ import gspread
 from google.auth.exceptions import GoogleAuthError
 import traceback
 import pandas as pd
-import urllib.parse  # For URL encoding
 import base64  # For QR code image display
 import json
+from google.cloud import storage
+import io
 
 # 전역 변수로 db 선언
 db = None
@@ -138,9 +139,13 @@ except Exception as e:
     st.error("API 클라이언트 초기화에 실패했습니다. 관리자에게 문의해주세요.")
     st.stop()
 
-# Google Sheets API 설정
+# Google Sheets API 및 Google Cloud Storage 설정
 try:
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    scope = [
+        'https://spreadsheets.google.com/feeds',
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/devstorage.read_write'  # Cloud Storage 접근 권한 추가
+    ]
     service_account_info = dict(st.secrets["gcp_service_account"])
 
     # private_key의 줄 바꿈 처리
@@ -152,6 +157,13 @@ try:
 
     creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
     gs_client = gspread.authorize(creds)
+
+    # Google Cloud Storage 클라이언트 설정
+    try:
+        storage_client = storage.Client(credentials=creds, project=service_account_info['project_id'])
+    except Exception as e:
+        st.error(f"Google Cloud Storage 클라이언트 초기화에 실패했습니다: {str(e)}")
+        storage_client = None
 
     # 스프레드시트 열기
     sheet_url = "https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0"
@@ -202,7 +214,21 @@ IMAGE_PATTERNS = [
 def is_image_request(text):
     return any(re.search(pattern, text, re.IGNORECASE) for pattern in IMAGE_PATTERNS)
 
-# DALL-E를 사용한 이미지 생성 함수
+# 이미지 업로드 함수 추가
+def upload_image_to_gcs(image_data, filename):
+    try:
+        bucket_name = 'sawlteacher'  # 당신의 버킷 이름으로 변경하세요
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(filename)
+        blob.upload_from_string(image_data, content_type='image/png')
+        # 업로드한 이미지를 공개적으로 설정
+        blob.make_public()
+        return blob.public_url
+    except Exception as e:
+        st.error(f"이미지를 Cloud Storage에 업로드하는 중 오류가 발생했습니다: {str(e)}")
+        return None
+
+# DALL-E를 사용한 이미지 생성 함수 수정
 def generate_image(prompt):
     try:
         clean_prompt = re.sub(r'(이미지|그림|사진|웹툰).*?(그려|만들어|생성|출력|보여)[줘라]?', '', prompt).strip()
@@ -214,9 +240,24 @@ def generate_image(prompt):
             quality="standard",
             n=1,
         )
-        return response.data[0].url
+        image_url = response.data[0].url
+        # 이미지 다운로드
+        image_response = requests.get(image_url)
+        if image_response.status_code == 200:
+            image_data = image_response.content
+            # 고유한 파일 이름 생성
+            filename = f"images/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.png"
+            # Google Cloud Storage에 업로드
+            public_url = upload_image_to_gcs(image_data, filename)
+            if public_url:
+                return public_url
+            else:
+                return None
+        else:
+            st.error("이미지 다운로드에 실패했습니다.")
+            return None
     except Exception as e:
-        st.error("이미지 생성에 실패했습니다. 다시 시도해주세요.")
+        st.error(f"이미지 생성에 실패했습니다. 다시 시도해주세요. 오류: {str(e)}")
         return None
 
 # 사용자 데이터 캐싱 함수
@@ -369,12 +410,12 @@ def show_login_page():
                 st.session_state.current_page = 'change_password'
                 st.session_state.username = username
                 st.warning("초기 비밀번호를 사용 중입니다. 비밀번호를 변경해주세요.")
-                st.rerun()
+                st.experimental_rerun()
             elif result:
                 st.session_state.user = result
                 st.session_state.current_page = 'home'
                 st.success("로그인 성공!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 pass  # 오류 메시지는 로그인 함수에서 처리됨
 
@@ -389,7 +430,7 @@ def show_change_password_page():
                 st.success("비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 다시 로그인해주세요.")
                 st.session_state.current_page = 'login'
                 st.session_state.username = ''
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("비밀번호 변경에 실패했습니다.")
         else:
@@ -467,6 +508,7 @@ def show_home_page():
                         st.session_state.home_messages.append({"role": "assistant", "content": full_response, "image_url": image_url})
                     else:
                         full_response = "죄송합니다. 이미지 생성 중 오류가 발생했습니다. 다른 주제로 시도해 보시거나, 요청을 더 구체적으로 해주세요."
+                        st.session_state.home_messages.append({"role": "assistant", "content": full_response})
             else:
                 try:
                     start_time = datetime.now()
@@ -505,8 +547,8 @@ def show_home_page():
                 except Exception as e:
                     st.error("응답 생성 중 오류가 발생했습니다. 다시 시도해주세요.")
 
-            if full_response:
-                st.session_state.home_messages.append({"role": "assistant", "content": full_response})
+                if full_response:
+                    st.session_state.home_messages.append({"role": "assistant", "content": full_response})
 
     if st.sidebar.button("현재 대화내역 초기화", key="reset_chat", help="현재 대화 내역을 초기화합니다.", use_container_width=True):
         st.session_state.home_messages = []
