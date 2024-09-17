@@ -1,0 +1,28 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main  # main 브랜치에 push할 때 실행
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: your-gcp-project-id  # GCP 프로젝트 ID 입력
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud builds submit --tag gcr.io/$GCP_PROJECT_ID/app
+        gcloud run deploy app --image gcr.io/$GCP_PROJECT_ID/app --region us-central1 --platform managed
+      env:
+        GCP_PROJECT_ID: boreal-voyager-434512-i0  # GCP 프로젝트 ID 입력
