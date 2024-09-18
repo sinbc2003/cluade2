@@ -10,12 +10,16 @@ RUN apt-get update && apt-get install -y build-essential
 # 필요한 파일 복사
 COPY requirements.txt .
 COPY app.py .
+COPY .streamlit /app/.streamlit
 
 # 종속성 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 환경 변수 설정
 ENV PORT 8080
+
+# 포트 노출 (문서화 목적)
+EXPOSE 8080
 
 # 앱 실행
 CMD ["streamlit", "run", "app.py", "--server.port=${PORT}", "--server.address=0.0.0.0"]
