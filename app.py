@@ -802,7 +802,9 @@ def show_available_chatbots_page():
                         st.markdown("</div>", unsafe_allow_html=True)
                         # 이미지 확대 기능
                         if st.button("QR 코드 확대", key=f"enlarge_qr_{i}"):
-                            st.image(qr_code_image, caption="QR 코드 (전체화면)", use_column_width=True)
+                            col1, col2, col3 = st.columns([1,2,1])
+                            with col2:
+                                st.image(qr_code_image, caption="QR 코드 (전체화면)", use_column_width=True)
                     else:
                         st.error("QR 코드를 생성하는 데 실패했습니다.")
 
