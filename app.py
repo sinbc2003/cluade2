@@ -822,9 +822,7 @@ def show_available_chatbots_page():
                         st.markdown("</div>", unsafe_allow_html=True)
                         # 이미지 확대 기능
                         if st.button("QR 코드 확대", key=f"enlarge_qr_{i}"):
-                            col1, col2, col3 = st.columns([1,2,1])
-                            with col2:
-                                st.image(qr_code_image, caption="QR 코드 (전체화면)", use_column_width=True)
+                            st.image(qr_code_image, caption="QR 코드 (확대)", width=300)
                     else:
                         st.error("QR 코드를 생성하는 데 실패했습니다.")
 
@@ -1554,9 +1552,16 @@ def main_app():
     # 뒤로가기 함수
     def go_back():
         if st.session_state.page_history:
-            st.session_state.current_page = st.session_state.page_history.pop()v
+            st.session_state.current_page = st.session_state.page_history.pop()
+
     # 사이드바 메뉴
     st.sidebar.title("메뉴")
+
+    # 뒤로가기 버튼 추가
+    if st.sidebar.button("뒤로가기"):
+        go_back()
+        st.rerun()
+
     menu_items = [
         ("홈", 'home'),
         ("새 챗봇 만들기", 'create_chatbot'),
@@ -1570,21 +1575,16 @@ def main_app():
         menu_items.append(("사용량 데이터", 'usage_data'))
 
     menu_items.append(("로그아웃", 'logout'))
-    
-    # 뒤로가기 버튼 추가
-    if st.sidebar.button("뒤로가기"):
-        go_back()
 
     for label, page in menu_items:
         if st.sidebar.button(label, key=f"menu_{page}", use_container_width=True):
             if page == 'logout':
                 st.session_state.user = None
                 st.session_state.current_page = 'login'
-                st.rerun()
+                st.session_state.page_history = []
             else:
-                st.session_state.current_page = page
-
-            st.rerun()  # 페이지 갱신
+                change_page(page)
+            st.rerun()
 
     # 현재 페이지에 따라 적절한 내용 표시
     if st.session_state.current_page == 'home':
@@ -1600,7 +1600,7 @@ def main_app():
             show_chatbot_page()
         else:
             st.error("선택된 챗봇을 찾을 수 없습니다.")
-            st.session_state.current_page = 'available_chatbots'
+            change_page('available_chatbots')
     elif st.session_state.current_page == 'shared_chatbot':
         show_shared_chatbot_page()
     elif st.session_state.current_page == 'chat_history':
@@ -1616,7 +1616,7 @@ def main_app():
     elif st.session_state.current_page == 'usage_data':
         show_usage_data_page()
     else:
-        st.session_state.current_page = 'home'
+        change_page('home')
         show_home_page()
 
     # 오래된 대화 내역 삭제 (1달 이상 된 내역)
