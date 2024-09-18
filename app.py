@@ -786,11 +786,10 @@ def show_available_chatbots_page():
                 selected_model = st.selectbox("모델 선택", MODEL_OPTIONS, key=f"model_select_{i}")
                 if st.button("URL 생성", key=f"generate_url_{i}"):
                     chatbot_id = str(chatbot.get('_id', i))
-                    # 모델 이름을 URL 인코딩
                     model_param = urllib.parse.quote(selected_model)
                     shareable_url = f"{base_url}?chatbot_id={chatbot_id}&model={model_param}"
                     st.write(f"공유 가능한 URL: {shareable_url}")
-
+            
                     # QR 코드 생성
                     qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={urllib.parse.quote(shareable_url)}"
                     qr_code_response = requests.get(qr_code_url)
@@ -798,11 +797,11 @@ def show_available_chatbots_page():
                         qr_code_image = qr_code_response.content
                         # 이미지 표시
                         st.markdown("<div class='qr-code'>", unsafe_allow_html=True)
-                        st.image(qr_code_image, caption="QR 코드 (클릭하여 확대)", use_column_width=False)
+                        st.image(qr_code_image, caption="QR 코드 (클릭하여 확대)", use_column_width=False, width=150)
                         st.markdown("</div>", unsafe_allow_html=True)
                         # 이미지 확대 기능
                         if st.button("QR 코드 확대", key=f"enlarge_qr_{i}"):
-                            st.image(qr_code_image, caption="QR 코드 (확대)", width=1000)
+                            st.image(qr_code_image, caption="QR 코드 (확대)", width=600)
                     else:
                         st.error("QR 코드를 생성하는 데 실패했습니다.")
 
@@ -1210,9 +1209,13 @@ def show_public_chatbot_page(chatbot_id):
     # 챗봇 불러오기
     chatbot = None
     if db is not None:
-        user = db.users.find_one({"chatbots._id": ObjectId(chatbot_id)}, {"chatbots.$": 1})
-        if user:
-            chatbot = user['chatbots'][0]
+        try:
+            user = db.users.find_one({"chatbots._id": ObjectId(chatbot_id)}, {"chatbots.$": 1})
+            if user:
+                chatbot = user['chatbots'][0]
+        except InvalidId:
+            st.error("잘못된 챗봇 ID입니다.")
+            return
     else:
         st.error("데이터베이스 연결이 필요합니다.")
         return
@@ -1296,10 +1299,10 @@ def start_chatting(chatbot, user_name, selected_model):
                                 full_response += chunk.text
                                 message_placeholder.markdown(full_response + "▌")
                         record_usage(chatbot['creator'], selected_model, start_time)
-                    elif "claude" in selected_model:
+                    elif "claude" in selected_model.lower():
                         with anthropic_client.messages.stream(
                             max_tokens=1000,
-                            messages=st.session_state.public_chatbot_messages,
+                            messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.public_chatbot_messages],
                             model=selected_model,
                             system=chatbot['system_prompt'],
                         ) as stream:
@@ -1307,6 +1310,8 @@ def start_chatting(chatbot, user_name, selected_model):
                                 full_response += text
                                 message_placeholder.markdown(full_response + "▌")
                         record_usage(chatbot['creator'], selected_model, start_time)
+                    else:
+                        st.error(f"지원되지 않는 모델입니다: {selected_model}")
                 except Exception as e:
                     st.error(f"응답 생성 중 오류가 발생했습니다: {str(e)}")
 
