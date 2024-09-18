@@ -22,4 +22,4 @@ ENV PORT 8080
 EXPOSE 8080
 
 # 앱 실행
-CMD ["streamlit", "run", "app.py", "--server.port=${PORT}", "--server.address=0.0.0.0"]
+CMD ["sh", "-c", "streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]
