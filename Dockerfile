@@ -8,17 +8,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y build-essential
 
 # 필요한 파일 복사
-COPY requirements.txt ./requirements.txt
-COPY app.py ./app.py
+COPY requirements.txt .
+COPY app.py .
 
 # 종속성 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 포트 설정
-EXPOSE 8501
-
-# 환경 변수 설정 (필요한 경우)
-ENV PORT 8501
+# 환경 변수 설정
+ENV PORT 8080
 
 # 앱 실행
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "app.py", "--server.port=${PORT}", "--server.address=0.0.0.0"]
