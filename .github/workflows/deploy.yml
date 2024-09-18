@@ -16,7 +16,7 @@ jobs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
-        project_id: your-gcp-project-id  # GCP 프로젝트 ID 입력
+        project_id: boreal-voyager-434512-i0  # GCP 프로젝트 ID 입력
         service_account_key: ${{ secrets.GCP_SA_KEY }}
         export_default_credentials: true
 
