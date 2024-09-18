@@ -25,6 +25,29 @@ db = None
 # Streamlit 페이지 설정
 st.set_page_config(page_title="Chatbot Platform", page_icon=":robot_face:", layout="wide")
 
+# 캐싱 함수를 추가
+@st.cache_data(ttl=600)
+def get_cached_chatbots(username):
+    if db is not None:
+        if username == 'admin':
+            return list(db.users.aggregate([
+                {"$unwind": "$chatbots"},
+                {"$project": {
+                    "chatbot": "$chatbots",
+                    "owner": "$username"
+                }}
+            ]))
+        else:
+            user = db.users.find_one({"username": username})
+            return user.get("chatbots", []) if user else []
+    return []
+
+@st.cache_data(ttl=600)
+def get_cached_shared_chatbots():
+    if db is not None:
+        return list(db.shared_chatbots.find())
+    return []
+
 # CSS 스타일 추가
 st.markdown("""
 <style>
@@ -722,22 +745,11 @@ def save_public_chat_history(chatbot_id, user_name, messages):
         except Exception as e:
             st.error(f"대화 내역 저장 중 오류가 발생했습니다: {str(e)}")
 
-# 나만 사용 가능한 챗봇 페이지
 def show_available_chatbots_page():
     st.title("나만 사용 가능한 챗봇")
 
-    if db is not None and st.session_state.user["username"] == 'admin':
-        # admin user can see all chatbots
-        users = db.users.find()
-        all_chatbots = []
-        for user in users:
-            user_chatbots = user.get("chatbots", [])
-            for chatbot in user_chatbots:
-                chatbot["owner"] = user["username"]
-                all_chatbots.append(chatbot)
-        chatbots_to_show = all_chatbots
-    else:
-        chatbots_to_show = st.session_state.user.get("chatbots", [])
+    # 캐시된 챗봇 데이터 가져오기
+    chatbots_to_show = get_cached_chatbots(st.session_state.user["username"])
 
     if not chatbots_to_show:
         st.info("아직 만든 챗봇이 없습니다. '새 챗봇 만들기'에서 첫 번째 챗봇을 만들어보세요!")
@@ -749,9 +761,15 @@ def show_available_chatbots_page():
         st.error("BASE_URL이 설정되지 않았습니다. 환경 변수를 확인해주세요.")
         return
 
+    # 페이지네이션 구현
+    items_per_page = 9
+    total_pages = (len(chatbots_to_show) - 1) // items_per_page + 1
+    page = st.number_input('페이지', min_value=1, max_value=total_pages, value=1)
+    start_idx = (page - 1) * items_per_page
+    end_idx = start_idx + items_per_page
 
     cols = st.columns(3)
-    for i, chatbot in enumerate(chatbots_to_show):
+    for i, chatbot in enumerate(chatbots_to_show[start_idx:end_idx], start=start_idx):
         with cols[i % 3]:
             st.markdown(f"""
             <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
@@ -780,6 +798,8 @@ def show_available_chatbots_page():
                     if st.button("삭제하기", key=f"delete_{i}"):
                         if delete_chatbot(chatbot.get('_id'), chatbot.get('creator', '')):
                             st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
+                            # 캐시 무효화
+                            get_cached_chatbots.clear()
                             st.rerun()
             # URL 생성 버튼 추가
             with st.expander("URL 생성", expanded=False):
@@ -815,6 +835,21 @@ def show_available_chatbots_page():
                     st.session_state.current_page = 'view_public_chat_history'
                     st.rerun()
 
+    # 페이지 네비게이션 버튼
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if page > 1:
+            if st.button("이전"):
+                st.session_state.page = page - 1
+                st.rerun()
+    with col3:
+        if page < total_pages:
+            if st.button("다음"):
+                st.session_state.page = page + 1
+                st.rerun()
+    with col2:
+        st.write(f"페이지 {page}/{total_pages}")
+
 # 챗봇 삭제 함수 수정
 def delete_chatbot(chatbot_id, creator):
     if db is not None:
@@ -839,57 +874,90 @@ def delete_chatbot(chatbot_id, creator):
         st.session_state.user["chatbots"] = [cb for cb in st.session_state.user["chatbots"] if cb.get('_id') != chatbot_id]
         return True
 
-# 공유 챗봇 페이지
 def show_shared_chatbots_page():
     st.title("수원외국어고등학교 공유 챗봇")
-    if db is not None:
-        shared_chatbots = list(db.shared_chatbots.find())
-        if not shared_chatbots:
-            st.info("공유된 챗봇이 없습니다.")
-            return
+    
+    # 캐시된 공유 챗봇 데이터 가져오기
+    shared_chatbots = get_cached_shared_chatbots()
+    
+    if not shared_chatbots:
+        st.info("공유된 챗봇이 없습니다.")
+        return
 
-        # 범주별로 챗봇 그룹화
-        categories = {}
-        for chatbot in shared_chatbots:
-            category = chatbot.get('category', '기타')
-            if category not in categories:
-                categories[category] = []
-            categories[category].append(chatbot)
+    # 범주별로 챗봇 그룹화
+    categories = {}
+    for chatbot in shared_chatbots:
+        category = chatbot.get('category', '기타')
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(chatbot)
 
-        for category, chatbots_in_category in categories.items():
+    # 페이지네이션 구현
+    items_per_page = 9
+    total_chatbots = sum(len(chatbots) for chatbots in categories.values())
+    total_pages = (total_chatbots - 1) // items_per_page + 1
+    page = st.number_input('페이지', min_value=1, max_value=total_pages, value=1)
+    start_idx = (page - 1) * items_per_page
+    end_idx = start_idx + items_per_page
+
+    chatbot_count = 0
+    for category, chatbots_in_category in categories.items():
+        if chatbot_count >= end_idx:
+            break
+        if chatbot_count + len(chatbots_in_category) > start_idx:
             st.subheader(f"범주: {category}")
             cols = st.columns(3)
             for i, chatbot in enumerate(chatbots_in_category):
-                with cols[i % 3]:
-                    st.markdown(f"""
-                    <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
-                        <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/100')}" alt="프로필 이미지">
-                        <div class="chatbot-info">
-                            <div class="chatbot-name">{chatbot['name']}</div>
-                            <div class="chatbot-description">{chatbot['description']}</div>
-                            <p>작성자: {chatbot['creator']}</p>
+                if start_idx <= chatbot_count < end_idx:
+                    with cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="chatbot-card" style="background-color: {chatbot.get('background_color', '#FFFFFF')}">
+                            <img src="{chatbot.get('profile_image_url', 'https://via.placeholder.com/100')}" alt="프로필 이미지">
+                            <div class="chatbot-info">
+                                <div class="chatbot-name">{chatbot['name']}</div>
+                                <div class="chatbot-description">{chatbot['description']}</div>
+                                <p>작성자: {chatbot['creator']}</p>
+                            </div>
                         </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        if st.button("사용하기", key=f"use_shared_{category}_{i}"):
-                            st.session_state.current_shared_chatbot = chatbot
-                            st.session_state.current_page = 'shared_chatbot'
-                            st.rerun()
-                    with col2:
-                        if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
-                            if st.button("수정하기", key=f"edit_shared_{category}_{i}"):
-                                st.session_state.editing_shared_chatbot = chatbot
-                                st.session_state.current_page = 'edit_shared_chatbot'
+                        """, unsafe_allow_html=True)
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            if st.button("사용하기", key=f"use_shared_{category}_{chatbot_count}"):
+                                st.session_state.current_shared_chatbot = chatbot
+                                st.session_state.current_page = 'shared_chatbot'
                                 st.rerun()
-                    with col3:
-                        if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
-                            if st.button("삭제하기", key=f"delete_shared_{category}_{i}"):
-                                if delete_shared_chatbot(chatbot['_id']):
-                                    st.success(f"'{chatbot['name']}' 공유 챗봇이 삭제되었습니다.")
+                        with col2:
+                            if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
+                                if st.button("수정하기", key=f"edit_shared_{category}_{chatbot_count}"):
+                                    st.session_state.editing_shared_chatbot = chatbot
+                                    st.session_state.current_page = 'edit_shared_chatbot'
                                     st.rerun()
-    else:
+                        with col3:
+                            if chatbot['creator'] == st.session_state.user["username"] or st.session_state.user["username"] == 'admin':
+                                if st.button("삭제하기", key=f"delete_shared_{category}_{chatbot_count}"):
+                                    if delete_shared_chatbot(chatbot['_id']):
+                                        st.success(f"'{chatbot['name']}' 공유 챗봇이 삭제되었습니다.")
+                                        # 캐시 무효화
+                                        get_cached_shared_chatbots.clear()
+                                        st.rerun()
+                chatbot_count += 1
+
+    # 페이지 네비게이션 버튼
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if page > 1:
+            if st.button("이전"):
+                st.session_state.page = page - 1
+                st.rerun()
+    with col3:
+        if page < total_pages:
+            if st.button("다음"):
+                st.session_state.page = page + 1
+                st.rerun()
+    with col2:
+        st.write(f"페이지 {page}/{total_pages}")
+
+    if db is None:
         st.write("데이터베이스 연결이 없어 공유 챗봇을 불러올 수 없습니다.")
 
 # 공유 챗봇 삭제 함수 수정
@@ -1473,6 +1541,20 @@ def show_usage_data_page():
 
 # 메인 애플리케이션
 def main_app():
+    # 페이지 히스토리 초기화
+    if 'page_history' not in st.session_state:
+        st.session_state.page_history = []
+
+    # 페이지 변경 함수
+    def change_page(page):
+        if st.session_state.current_page != page:
+            st.session_state.page_history.append(st.session_state.current_page)
+            st.session_state.current_page = page
+
+    # 뒤로가기 함수
+    def go_back():
+        if st.session_state.page_history:
+            st.session_state.current_page = st.session_state.page_history.pop()v
     # 사이드바 메뉴
     st.sidebar.title("메뉴")
     menu_items = [
@@ -1488,6 +1570,10 @@ def main_app():
         menu_items.append(("사용량 데이터", 'usage_data'))
 
     menu_items.append(("로그아웃", 'logout'))
+    
+    # 뒤로가기 버튼 추가
+    if st.sidebar.button("뒤로가기"):
+        go_back()
 
     for label, page in menu_items:
         if st.sidebar.button(label, key=f"menu_{page}", use_container_width=True):
