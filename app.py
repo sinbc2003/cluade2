@@ -114,7 +114,7 @@ st.markdown("""
 
 # MongoDB 연결
 try:
-    MONGO_URI = st.secrets["MONGO_URI"]
+    MONGO_URI = os.environ.get("MONGO_URI")
     client = MongoClient(MONGO_URI)
     db = client.get_database("chatbot_platform")
 except Exception as e:
@@ -122,12 +122,12 @@ except Exception as e:
     db = None
 
 # API 키 가져오기
-ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not (ANTHROPIC_API_KEY and OPENAI_API_KEY and GEMINI_API_KEY):
-    st.error("하나 이상의 API 키가 설정되지 않았습니다. Streamlit Cloud의 환경 변수를 확인해주세요.")
+    st.error("하나 이상의 API 키가 설정되지 않았습니다. 환경 변수를 확인해주세요.")
     st.stop()
 
 # API 클라이언트 설정
@@ -146,14 +146,8 @@ try:
         'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/devstorage.read_write'  # Cloud Storage 접근 권한 추가
     ]
-    service_account_info = dict(st.secrets["gcp_service_account"])
-
-    # private_key의 줄 바꿈 처리
-    if 'private_key' in service_account_info:
-        private_key = service_account_info['private_key']
-        if '\\n' in private_key:
-            private_key = private_key.replace('\\n', '\n')
-            service_account_info['private_key'] = private_key
+    service_account_info = os.environ.get("GCP_SERVICE_ACCOUNT_KEY")
+    service_account_info = json.loads(service_account_info)  # JSON 문자열을 딕셔너리로 변환
 
     creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
     gs_client = gspread.authorize(creds)
@@ -166,7 +160,7 @@ try:
         storage_client = None
 
     # 스프레드시트 열기
-    sheet_url = "https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0"
+    sheet_url = "https://docs.google.com/spreadsheets/d/your_spreadsheet_id/edit?gid=0"
     try:
         sheet = gs_client.open_by_url(sheet_url).sheet1
     except gspread.exceptions.SpreadsheetNotFound:
@@ -749,12 +743,12 @@ def show_available_chatbots_page():
         st.info("아직 만든 챗봇이 없습니다. '새 챗봇 만들기'에서 첫 번째 챗봇을 만들어보세요!")
         return
 
-    # st.secrets에서 BASE_URL 가져오기
-    try:
-        base_url = st.secrets["BASE_URL"]
-    except KeyError:
-        st.error("BASE_URL이 설정되지 않았습니다. Streamlit secrets에 BASE_URL을 추가해주세요.")
+    # 환경 변수에서 BASE_URL 가져오기
+    base_url = os.environ.get("BASE_URL")
+    if not base_url:
+        st.error("BASE_URL이 설정되지 않았습니다. 환경 변수를 확인해주세요.")
         return
+
 
     cols = st.columns(3)
     for i, chatbot in enumerate(chatbots_to_show):
