@@ -1222,7 +1222,7 @@ def show_public_chatbot_page(chatbot_id):
         return
 
     # URL에서 모델 파라미터 가져오기
-    query_params = st.experimental_get_query_params()
+    query_params = st.query_params
     selected_model = query_params.get('model', ['gpt-4o'])[0]
 
     # 챗봇 이름과 프로필 이미지 표시
@@ -1546,7 +1546,7 @@ def add_sidebar_footer():
 
 # 메인 실행 부분
 def main():
-    query_params = st.experimental_get_query_params()
+    query_params = st.query_params
     if 'chatbot_id' in query_params:
         chatbot_id = query_params['chatbot_id'][0]
         show_public_chatbot_page(chatbot_id)
