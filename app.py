@@ -781,16 +781,15 @@ def show_available_chatbots_page():
                         if delete_chatbot(chatbot.get('_id'), chatbot.get('creator', '')):
                             st.success(f"'{chatbot['name']}' 챗봇이 삭제되었습니다.")
                             st.rerun()
-           # URL 생성 버튼 추가
+            # URL 생성 버튼 추가
             with st.expander("URL 생성", expanded=False):
                 selected_model = st.selectbox("모델 선택", MODEL_OPTIONS, key=f"model_select_{i}")
                 if st.button("URL 생성", key=f"generate_url_{i}"):
-                    if '_id' in chatbot:
-                        chatbot_id = str(chatbot['_id'])
-                        # 모델 이름을 URL 인코딩
-                        model_param = urllib.parse.quote(selected_model)
-                        shareable_url = f"{base_url}?chatbot_id={chatbot_id}&model={model_param}"
-                        st.write(f"공유 가능한 URL: {shareable_url}")
+                    chatbot_id = str(chatbot.get('_id', i))
+                    # 모델 이름을 URL 인코딩
+                    model_param = urllib.parse.quote(selected_model)
+                    shareable_url = f"{base_url}?chatbot_id={chatbot_id}&model={model_param}"
+                    st.write(f"공유 가능한 URL: {shareable_url}")
 
                     # QR 코드 생성
                     qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={urllib.parse.quote(shareable_url)}"
@@ -801,16 +800,9 @@ def show_available_chatbots_page():
                         st.markdown("<div class='qr-code'>", unsafe_allow_html=True)
                         st.image(qr_code_image, caption="QR 코드 (클릭하여 확대)", use_column_width=False)
                         st.markdown("</div>", unsafe_allow_html=True)
-                        
                         # 이미지 확대 기능
                         if st.button("QR 코드 확대", key=f"enlarge_qr_{i}"):
-                            st.session_state[f'enlarge_qr_{i}'] = True
-                        
-                        # 확대된 QR 코드 표시
-                        if st.session_state.get(f'enlarge_qr_{i}', False):
-                            st.image(qr_code_image, caption="QR 코드 (확대)", width=500)
-                            if st.button("닫기", key=f"close_qr_{i}"):
-                                st.session_state[f'enlarge_qr_{i}'] = False
+                            st.image(qr_code_image, caption="QR 코드 (확대)", width=1000)
                     else:
                         st.error("QR 코드를 생성하는 데 실패했습니다.")
 
