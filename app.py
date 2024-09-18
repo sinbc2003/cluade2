@@ -160,7 +160,7 @@ try:
         storage_client = None
 
     # 스프레드시트 열기
-    sheet_url = "https://docs.google.com/spreadsheets/d/your_spreadsheet_id/edit?gid=0"
+    sheet_url = "https://docs.google.com/spreadsheets/d/1ql6GXd3KYPywP3wNeXrgJTfWf8aCP8fGXUvGYbmlmic/edit?gid=0"
     try:
         sheet = gs_client.open_by_url(sheet_url).sheet1
     except gspread.exceptions.SpreadsheetNotFound:
